@@ -1,0 +1,397 @@
+// Prisma schema for Tawreed B2B Grocery Marketplace
+// Platform: توريد - Curated Marketplace for Grocery Stores in Jordan
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User roles in the platform
+enum UserRole {
+  BUYER     // Grocery store owners (mobile app)
+  SUPPLIER  // Wholesale distributors (managed by admin)
+  ADMIN     // Platform administrators (dashboard)
+}
+
+// Status of a purchase request (RFQ) - Legacy
+enum RequestStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+  CANCELLED
+  EXPIRED
+}
+
+// Status of a supplier's offer - Legacy
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+  EXPIRED
+}
+
+// Status of an order
+enum OrderStatus {
+  PENDING       // Order placed, awaiting admin confirmation
+  CONFIRMED     // Admin confirmed the order
+  PROCESSING    // Order is being prepared
+  SHIPPED       // Order is in transit / out for delivery
+  DELIVERED     // Order delivered to buyer
+  CANCELLED     // Order cancelled
+}
+
+// Notification types
+enum NotificationType {
+  NEW_REQUEST     // Legacy
+  NEW_OFFER       // Legacy
+  OFFER_ACCEPTED  // Legacy
+  OFFER_REJECTED  // Legacy
+  ORDER_UPDATE    // Order status changed
+  NEW_ORDER       // New order placed (for admin)
+  ORDER_STATUS_CHANGE // Order status changed (for buyer)
+  SYSTEM          // System notifications
+}
+
+// Product categories - Legacy enum (kept for old Request model)
+enum ProductCategory {
+  SUGAR
+  RICE
+  CANDY_SNACKS
+  DAIRY
+  BEVERAGES
+  CANNED_GOODS
+  COOKING_OIL
+  FLOUR_GRAINS
+  SPICES
+  CLEANING
+  PERSONAL_CARE
+  OTHER
+}
+
+// Unit of measurement
+enum Unit {
+  KG        // Kilogram
+  GRAM      // Gram
+  LITER     // Liter
+  PIECE     // Individual piece
+  PACK      // Package
+  BOX       // Box
+  CARTON    // Carton
+  DOZEN     // 12 pieces
+  PALLET    // Pallet
+}
+
+// ============================================
+// CORE MODELS
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  phone         String    @unique  // رقم الهاتف كمعرّف فريد (07xxxxxxxx)
+  email         String?   @unique  // اختياري
+  passwordHash  String
+  username      String    // اسم المستخدم (بدلاً من name)
+  role          UserRole
+  
+  // Business details
+  storeName     String?   // اسم البقالة/المتجر (بدلاً من businessName)
+  businessAddress String?
+  city          String?
+  
+  // For suppliers: areas they can deliver to
+  deliveryAreas String[]
+  
+  // Verification
+  isVerified    Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations - Legacy RFQ
+  requests      Request[]       @relation("BuyerRequests")
+  offers        Offer[]         @relation("SupplierOffers")
+  
+  // Relations - New e-commerce
+  buyerOrders   Order[]         @relation("BuyerOrders")
+  supplierOrders Order[]        @relation("SupplierOrders")
+  notifications Notification[]
+  cartItems     CartItem[]
+  
+  @@index([role])
+  @@index([city])
+}
+
+// Purchase Request (RFQ - Request for Quotation)
+model Request {
+  id            String        @id @default(cuid())
+  
+  // Request details
+  title         String
+  description   String?
+  category      ProductCategory
+  
+  // Product specifications
+  productName   String
+  quantity      Float
+  unit          Unit
+  
+  // Optional specifications
+  brand         String?       // Preferred brand (if any)
+  specifications String?      // Additional specs (e.g., "organic", "imported")
+  
+  // Delivery requirements
+  deliveryCity  String
+  deliveryAddress String?
+  deliveryDeadline DateTime?
+  
+  // Budget
+  maxBudget     Float?        // Maximum budget (optional)
+  
+  // Status & timing
+  status        RequestStatus @default(OPEN)
+  expiresAt     DateTime      // When the request stops accepting offers
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  // Relations
+  buyerId       String
+  buyer         User          @relation("BuyerRequests", fields: [buyerId], references: [id], onDelete: Cascade)
+  offers        Offer[]
+  order         Order?
+  
+  @@index([status])
+  @@index([category])
+  @@index([deliveryCity])
+  @@index([buyerId])
+  @@index([createdAt])
+}
+
+// Supplier's Offer on a Request
+model Offer {
+  id            String      @id @default(cuid())
+  
+  // Pricing
+  pricePerUnit  Float
+  totalPrice    Float
+  quantity      Float       // Quantity supplier can provide
+  unit          Unit
+  
+  // Delivery terms
+  deliveryDays  Int         // Days needed for delivery
+  deliveryNotes String?
+  
+  // Offer details
+  notes         String?     // Additional notes from supplier
+  validUntil    DateTime    // Offer validity period
+  
+  // Status
+  status        OfferStatus @default(PENDING)
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  // Relations
+  requestId     String
+  request       Request     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  
+  supplierId    String
+  supplier      User        @relation("SupplierOffers", fields: [supplierId], references: [id], onDelete: Cascade)
+  
+  order         Order?
+  
+  @@unique([requestId, supplierId]) // One offer per supplier per request
+  @@index([status])
+  @@index([supplierId])
+  @@index([requestId])
+}
+
+// Order (created when an offer is accepted - Legacy, or from cart - New)
+model Order {
+  id            String      @id @default(cuid())
+  orderNumber   String      @unique @default(cuid())
+  
+  // Order total
+  totalPrice    Float
+  
+  // Delivery
+  deliveryAddress String
+  deliveryCity    String
+  expectedDelivery DateTime?
+  actualDelivery   DateTime?
+  
+  // Status
+  status        OrderStatus @default(PENDING)
+  statusHistory Json        @default("[]") // Array of {status, timestamp, note}
+  
+  // Notes
+  buyerNotes    String?
+  adminNotes    String?
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  // Relations - Buyer
+  buyerId       String
+  buyer         User        @relation("BuyerOrders", fields: [buyerId], references: [id])
+  
+  // Relations - Supplier (admin assigns, optional)
+  supplierId    String?
+  supplier      User?       @relation("SupplierOrders", fields: [supplierId], references: [id])
+  
+  // Relations - Order items
+  items         OrderItem[]
+  
+  // Legacy relations (nullable for new orders)
+  requestId     String?     @unique
+  request       Request?    @relation(fields: [requestId], references: [id])
+  offerId       String?     @unique
+  offer         Offer?      @relation(fields: [offerId], references: [id])
+  
+  @@index([status])
+  @@index([buyerId])
+  @@index([supplierId])
+  @@index([createdAt])
+}
+
+// Order item (snapshot of product at time of order)
+model OrderItem {
+  id            String   @id @default(cuid())
+  
+  // Product snapshot
+  productId     String?  // Optional for RFQ-based orders
+  productName   String
+  productNameEn String?
+  productImage  String?
+  
+  // Pricing
+  quantity      Int
+  unit          Unit
+  pricePerUnit  Float
+  totalPrice    Float
+  
+  // Relations
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product       Product? @relation(fields: [productId], references: [id])
+  
+  @@index([orderId])
+  @@index([productId])
+}
+
+// ============================================
+// E-COMMERCE MODELS
+// ============================================
+
+// Product category (flexible, admin-managed)
+model Category {
+  id          String    @id @default(cuid())
+  name        String    // Arabic name
+  nameEn      String?   // English name
+  slug        String    @unique // URL-safe identifier
+  image       String?   // Category image path
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  products    Product[]
+  
+  @@index([sortOrder])
+  @@index([isActive])
+}
+
+// Product in the catalog
+model Product {
+  id              String    @id @default(cuid())
+  
+  // Basic info
+  name            String    // Arabic name
+  nameEn          String?   // English name
+  description     String?   // Arabic description
+  descriptionEn   String?   // English description
+  
+  // Pricing
+  price           Float     // Current price (JOD)
+  compareAtPrice  Float?    // Original price for showing discount
+  
+  // Media
+  image           String?   // Main product image path
+  images          String[]  // Additional images
+  
+  // Classification
+  categoryId      String
+  category        Category  @relation(fields: [categoryId], references: [id])
+  unit            Unit      @default(PIECE)
+  
+  // Inventory
+  sku             String?   @unique
+  barcode         String?
+  stock           Int       @default(0)
+  minOrderQuantity Int      @default(1)
+  
+  // Status
+  isActive        Boolean   @default(true)
+  sortOrder       Int       @default(0)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
+  
+  @@index([categoryId])
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+// Shopping cart item (server-side cart for mobile app)
+model CartItem {
+  id          String   @id @default(cuid())
+  quantity    Int      @default(1)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  buyerId     String
+  buyer       User     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  @@unique([buyerId, productId]) // One cart entry per product per buyer
+  @@index([buyerId])
+}
+
+// Notifications
+model Notification {
+  id            String           @id @default(cuid())
+  type          NotificationType
+  title         String
+  message       String
+  
+  // Link to related entity
+  linkUrl       String?
+  
+  // Read status
+  isRead        Boolean          @default(false)
+  
+  createdAt     DateTime         @default(now())
+  
+  // Relations
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
