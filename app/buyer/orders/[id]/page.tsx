@@ -4,7 +4,7 @@ import { ArrowLeft, MapPin, Calendar, Package, DollarSign, Truck, CheckCircle } 
 import { Card, CardHeader, CardContent, StatusBadge } from '@/components/ui'
 import { getOrderById } from '@/actions/orders'
 import { formatDate, formatDateTime, formatCurrency } from '@/lib/utils'
-import { UNIT_LABELS } from '@/types'
+import { UNIT_LABELS, type Unit } from '@/types'
 
 export default async function BuyerOrderDetailPage({
   params,
@@ -55,33 +55,37 @@ export default async function BuyerOrderDetailPage({
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-2 gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Package className="w-5 h-5 text-blue-900" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Product</p>
-                    <p className="font-medium">{order.productName}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                    <span className="text-green-600 font-bold">#</span>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Quantity</p>
-                    <p className="font-medium">{order.quantity} {UNIT_LABELS[order.unit]}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
-                    <DollarSign className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Price per Unit</p>
-                    <p className="font-medium">{formatCurrency(order.pricePerUnit)}</p>
-                  </div>
-                </div>
+                {order.items && order.items[0] && (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <Package className="w-5 h-5 text-blue-900" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">Product</p>
+                        <p className="font-medium">{order.items[0].productName}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                        <span className="text-green-600 font-bold">#</span>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">Quantity</p>
+                        <p className="font-medium">{order.items[0].quantity} {UNIT_LABELS[order.items[0].unit as Unit]}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+                        <DollarSign className="w-5 h-5 text-emerald-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">Price per Unit</p>
+                        <p className="font-medium">{formatCurrency(order.items[0].pricePerUnit)}</p>
+                      </div>
+                    </div>
+                  </>
+                )}
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
                     <DollarSign className="w-5 h-5 text-purple-600" />
@@ -184,25 +188,27 @@ export default async function BuyerOrderDetailPage({
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Supplier Info */}
-          <Card>
-            <CardHeader>
-              <h3 className="font-semibold">Supplier</h3>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center">
-                  <Truck className="w-7 h-7 text-orange-600" />
+          {order.supplier && (
+            <Card>
+              <CardHeader>
+                <h3 className="font-semibold">Supplier</h3>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center">
+                    <Truck className="w-7 h-7 text-orange-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">{order.supplier.storeName || order.supplier.username}</p>
+                    <p className="text-sm text-gray-600">{order.supplier.city}</p>
+                    {order.supplier.phone && (
+                      <p className="text-sm text-gray-500">{order.supplier.phone}</p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <p className="font-semibold">{order.supplier.businessName || order.supplier.name}</p>
-                  <p className="text-sm text-gray-600">{order.supplier.city}</p>
-                  {order.supplier.phone && (
-                    <p className="text-sm text-gray-500">{order.supplier.phone}</p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Quick Info */}
           <Card>

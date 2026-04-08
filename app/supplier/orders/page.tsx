@@ -3,6 +3,7 @@ import { ShoppingCart, Package, CheckCircle, DollarSign } from 'lucide-react'
 import { Card, CardContent, Button, StatusBadge } from '@/components/ui'
 import { getSupplierOrders } from '@/actions/orders'
 import { formatDate, formatCurrency } from '@/lib/utils'
+import { UNIT_LABELS, type Unit } from '@/types'
 
 export default async function SupplierOrdersPage() {
   const orders = await getSupplierOrders()
@@ -137,11 +138,13 @@ function OrderCard({ order }: { order: Awaited<ReturnType<typeof getSupplierOrde
                 <h3 className="font-medium text-gray-900">#{order.orderNumber.slice(-8)}</h3>
                 <StatusBadge status={order.status} />
               </div>
-              <p className="text-sm text-gray-600 mb-1">
-                {order.productName} • {order.quantity} {order.unit}
-              </p>
+              {order.items && order.items[0] && (
+                <p className="text-sm text-gray-600 mb-1">
+                  {order.items[0].productName} • {order.items[0].quantity} {UNIT_LABELS[order.items[0].unit as Unit]}
+                </p>
+              )}
               <p className="text-sm text-gray-500">
-                To: {order.buyer.businessName || order.buyer.name} • {order.deliveryCity}
+                To: {order.buyer.storeName || order.buyer.username} • {order.deliveryCity}
               </p>
               <p className="text-xs text-gray-400 mt-1">
                 Created {formatDate(order.createdAt)}

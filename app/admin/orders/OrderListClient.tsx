@@ -18,7 +18,7 @@ interface Props {
     totalPrice: number
     status: string
     createdAt: Date
-    buyer: { id: string; name: string; businessName: string | null; phone: string | null }
+    buyer: { id: string; username: string; storeName: string | null; phone: string | null }
     items: Array<{ id: string; productName: string; quantity: number }>
   }>
   total: number
@@ -110,7 +110,7 @@ export function OrderListClient({ orders, total, pages, currentPage, currentStat
                         </td>
                         <td className="py-3">
                           <div>
-                            <p className="font-medium text-gray-900">{order.buyer.businessName || order.buyer.name}</p>
+                            <p className="font-medium text-gray-900">{order.buyer.storeName || order.buyer.username}</p>
                             {order.buyer.phone && <p className="text-xs text-gray-500">{order.buyer.phone}</p>}
                           </div>
                         </td>

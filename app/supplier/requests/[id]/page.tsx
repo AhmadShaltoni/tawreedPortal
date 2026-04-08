@@ -195,7 +195,7 @@ export default async function SupplierRequestDetailPage({
                   <Store className="w-7 h-7 text-blue-900" />
                 </div>
                 <div>
-                  <p className="font-semibold text-lg">{request.buyer.businessName || request.buyer.name}</p>
+                  <p className="font-semibold text-lg">{request.buyer.storeName || request.buyer.username}</p>
                   <p className="text-gray-600">{request.buyer.city}</p>
                   <p className="text-sm text-gray-400">
                     Member since {formatDate(request.buyer.createdAt)}

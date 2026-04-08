@@ -3,6 +3,7 @@ import { ShoppingCart, Truck, CheckCircle } from 'lucide-react'
 import { Card, CardContent, StatusBadge } from '@/components/ui'
 import { getBuyerOrders } from '@/actions/orders'
 import { formatDate, formatCurrency } from '@/lib/utils'
+import { UNIT_LABELS, type Unit } from '@/types'
 
 export default async function BuyerOrdersPage() {
   const orders = await getBuyerOrders()
@@ -121,12 +122,16 @@ function OrderCard({ order }: { order: Awaited<ReturnType<typeof getBuyerOrders>
                 <h3 className="font-medium text-gray-900">#{order.orderNumber.slice(-8)}</h3>
                 <StatusBadge status={order.status} />
               </div>
-              <p className="text-sm text-gray-600 mb-1">
-                {order.productName} • {order.quantity} {order.unit}
-              </p>
-              <p className="text-sm text-gray-500">
-                From: {order.supplier.businessName || order.supplier.name}
-              </p>
+              {order.items && order.items[0] && (
+                <p className="text-sm text-gray-600 mb-1">
+                  {order.items[0].productName} • {order.items[0].quantity} {UNIT_LABELS[order.items[0].unit as Unit]}
+                </p>
+              )}
+              {order.supplier && (
+                <p className="text-sm text-gray-500">
+                  From: {order.supplier.storeName || order.supplier.username}
+                </p>
+              )}
               <p className="text-xs text-gray-400 mt-1">
                 Created {formatDate(order.createdAt)}
               </p>

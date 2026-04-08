@@ -27,9 +27,9 @@ interface Props {
     createdAt: Date
     buyer: {
       id: string
-      name: string
-      email: string
-      businessName: string | null
+      username: string
+      email: string | null
+      storeName: string | null
       phone: string | null
       city: string | null
       businessAddress: string | null
@@ -169,12 +169,12 @@ export function OrderDetailClient({ order }: Props) {
             <CardContent className="space-y-3 text-sm">
               <div>
                 <p className="text-gray-500">{t.userManagement.name}</p>
-                <p className="font-medium text-gray-900">{order.buyer.name}</p>
+                <p className="font-medium text-gray-900">{order.buyer.username}</p>
               </div>
-              {order.buyer.businessName && (
+              {order.buyer.storeName && (
                 <div>
                   <p className="text-gray-500">{t.userManagement.businessName}</p>
-                  <p className="font-medium text-gray-900">{order.buyer.businessName}</p>
+                  <p className="font-medium text-gray-900">{order.buyer.storeName}</p>
                 </div>
               )}
               {order.buyer.phone && (

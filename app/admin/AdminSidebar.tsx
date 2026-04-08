@@ -9,6 +9,7 @@ import {
   ShoppingCart, 
   Users, 
   Bell,
+  StickyNote,
   Settings,
   Package2
 } from 'lucide-react'
@@ -26,6 +27,7 @@ export function AdminSidebar() {
     { href: '/admin/orders', label: t.admin.orders, icon: ShoppingCart },
     { href: '/admin/users', label: t.admin.users, icon: Users },
     { href: '/admin/notifications', label: t.admin.notifications, icon: Bell },
+    { href: '/admin/notices', label: t.admin.notices, icon: StickyNote },
   ]
 
   return (

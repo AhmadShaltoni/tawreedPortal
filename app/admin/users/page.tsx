@@ -15,7 +15,7 @@ export default async function AdminUsersPage({
 
   return (
     <UserListClient
-      users={users}
+      users={users as any}
       total={total}
       pages={pages}
       currentPage={page}

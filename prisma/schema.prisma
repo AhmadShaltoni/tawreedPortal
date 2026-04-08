@@ -86,6 +86,12 @@ enum Unit {
   PALLET    // Pallet
 }
 
+// Device platform for push notifications
+enum Platform {
+  IOS
+  ANDROID
+}
+
 // ============================================
 // CORE MODELS
 // ============================================
@@ -122,6 +128,7 @@ model User {
   supplierOrders Order[]        @relation("SupplierOrders")
   notifications Notification[]
   cartItems     CartItem[]
+  deviceTokens  DeviceToken[]   // Multiple devices per user
   
   @@index([role])
   @@index([city])
@@ -382,6 +389,12 @@ model Notification {
   
   // Link to related entity
   linkUrl       String?
+  imageUrl      String?          // Optional image for push notifications
+  data          Json?            // Custom payload data for deep linking
+  
+  // Push status
+  isSent        Boolean          @default(false)  // Whether push was actually sent
+  isGlobal      Boolean          @default(false)  // Broadcast to all users
   
   // Read status
   isRead        Boolean          @default(false)
@@ -394,4 +407,49 @@ model Notification {
   
   @@index([userId, isRead])
   @@index([createdAt])
+  @@index([isSent])
+}
+
+// Notices/Announcements - Rotating banner on home screen
+model Notice {
+  id              String    @id @default(cuid())
+  
+  // Content
+  text            String    @db.VarChar(255)  // Max 255 chars
+  
+  // Styling
+  backgroundColor String    @default("#f97316")  // Hex color format (#RRGGBB)
+  textColor       String    @default("#FFFFFF")  // Hex color format (#RRGGBB)
+  
+  // Display settings
+  isMobileOnly    Boolean   @default(true)   // Show only in mobile app, not on website
+  
+  // Status (soft delete)
+  isActive        Boolean   @default(true)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([isActive])
+  @@index([isMobileOnly])
+  @@index([createdAt])
+}
+
+// Device tokens for push notifications
+model DeviceToken {
+  id            String    @id @default(cuid())
+  token         String    @unique  // FCM or Expo token
+  platform      Platform            // IOS or ANDROID
+  
+  isActive      Boolean   @default(true)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([isActive])
 }

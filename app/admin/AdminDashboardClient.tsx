@@ -16,7 +16,7 @@ interface Props {
     totalPrice: number
     status: string
     createdAt: Date
-    buyer: { name: string; businessName: string | null }
+    buyer: { username: string; storeName: string | null }
   }>
 }
 
@@ -121,7 +121,7 @@ export function AdminDashboardClient({ stats, recentOrders }: Props) {
                         </Link>
                       </td>
                       <td className="py-3 text-gray-900">
-                        {order.buyer.businessName || order.buyer.name}
+                        {order.buyer.storeName || order.buyer.username}
                       </td>
                       <td className="py-3 font-medium text-gray-900">
                         {formatCurrency(order.totalPrice)}

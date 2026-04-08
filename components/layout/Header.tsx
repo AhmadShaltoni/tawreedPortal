@@ -6,10 +6,10 @@ export async function Header() {
 
   const user = session?.user ? {
     id: session.user.id as string,
-    name: session.user.name,
+    username: session.user.username,
     email: session.user.email,
     role: session.user.role as string,
-    businessName: session.user.businessName as string | null,
+    storeName: session.user.storeName as string | null,
   } : null
 
   return <HeaderClient user={user} />

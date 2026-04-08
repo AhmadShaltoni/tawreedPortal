@@ -11,5 +11,5 @@ export default async function AdminOrderDetailPage({
   const order = await getAdminOrderById(id)
   if (!order) notFound()
 
-  return <OrderDetailClient order={order} />
+  return <OrderDetailClient order={order as any} />
 }

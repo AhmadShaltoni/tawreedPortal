@@ -12,6 +12,10 @@ interface UpdateOrderStatusFormProps {
 }
 
 const STATUS_TRANSITIONS: Record<OrderStatus, { value: OrderStatus; label: string }[]> = {
+  PENDING: [
+    { value: 'CONFIRMED', label: 'Confirm Order' },
+    { value: 'CANCELLED', label: 'Cancel Order' },
+  ],
   CONFIRMED: [
     { value: 'PROCESSING', label: 'Start Processing' },
     { value: 'CANCELLED', label: 'Cancel Order' },

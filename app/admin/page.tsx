@@ -7,5 +7,5 @@ export default async function AdminDashboardPage() {
     getAdminOrders({ limit: 5 }),
   ])
 
-  return <AdminDashboardClient stats={stats} recentOrders={recentOrders} />
+  return <AdminDashboardClient stats={stats} recentOrders={recentOrders as any} />
 }

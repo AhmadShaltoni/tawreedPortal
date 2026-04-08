@@ -10,10 +10,10 @@ import { useLanguage } from '@/lib/LanguageContext'
 interface HeaderClientProps {
   user?: {
     id: string
-    name?: string | null
+    username?: string | null
     email?: string | null
     role: string
-    businessName?: string | null
+    storeName?: string | null
   } | null
 }
 

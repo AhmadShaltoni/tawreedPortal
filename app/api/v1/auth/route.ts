@@ -50,6 +50,44 @@ async function handleLogin(body: Record<string, unknown>) {
       return apiError("رقم الهاتف أو كلمة المرور غير صحيحة", 401);
     }
 
+    // Register device token if provided
+    if (body.deviceToken && body.platform) {
+      const platform = body.platform as string;
+      if (['IOS', 'ANDROID'].includes(platform)) {
+        try {
+          // Check if token already exists for another user
+          const existingToken = await db.deviceToken.findUnique({
+            where: { token: body.deviceToken as string },
+          });
+
+          if (existingToken && existingToken.userId !== user.id) {
+            await db.deviceToken.delete({
+              where: { id: existingToken.id },
+            });
+          }
+
+          // Upsert device token
+          await db.deviceToken.upsert({
+            where: { token: body.deviceToken as string },
+            update: {
+              userId: user.id,
+              isActive: true,
+              updatedAt: new Date(),
+            },
+            create: {
+              token: body.deviceToken as string,
+              platform: platform as 'IOS' | 'ANDROID',
+              userId: user.id,
+              isActive: true,
+            },
+          });
+        } catch (tokenError) {
+          console.error('Device token registration error:', tokenError);
+          // Don't fail login if token registration fails
+        }
+      }
+    }
+
     // Generate JWT token
     const secret = process.env.AUTH_SECRET;
     if (!secret) {
@@ -115,6 +153,26 @@ async function handleRegister(body: Record<string, unknown>) {
         isActive: true,
       },
     });
+
+    // Register device token if provided
+    if (body.deviceToken && body.platform) {
+      const platform = body.platform as string;
+      if (['IOS', 'ANDROID'].includes(platform)) {
+        try {
+          await db.deviceToken.create({
+            data: {
+              token: body.deviceToken as string,
+              platform: platform as 'IOS' | 'ANDROID',
+              userId: user.id,
+              isActive: true,
+            },
+          });
+        } catch (tokenError) {
+          console.error('Device token registration error during signup:', tokenError);
+          // Don't fail registration if token registration fails
+        }
+      }
+    }
 
     // توليد token للدخول التلقائي
     const secret = process.env.AUTH_SECRET;

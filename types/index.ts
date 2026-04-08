@@ -342,6 +342,7 @@ export const OFFER_STATUS_LABELS: Record<OfferStatus, string> = {
 }
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  PENDING: 'Pending',
   CONFIRMED: 'Confirmed',
   PROCESSING: 'Processing',
   SHIPPED: 'Shipped',

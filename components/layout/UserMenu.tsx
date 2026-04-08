@@ -9,10 +9,10 @@ import { useLanguage } from '@/lib/LanguageContext'
 interface UserMenuProps {
   user: {
     id: string
-    name?: string | null
+    username?: string | null
     email?: string | null
     role: string
-    businessName?: string | null
+    storeName?: string | null
   }
 }
 
@@ -21,7 +21,7 @@ export function UserMenu({ user }: UserMenuProps) {
   const { t, dir } = useLanguage()
 
   const dashboardLink = user.role === 'ADMIN' ? '/admin' : user.role === 'BUYER' ? '/buyer' : '/supplier'
-  const displayName = user.name || 'User'
+  const displayName = user.username || 'User'
   const roleLabel = user.role === 'ADMIN' ? t.roles.admin : user.role === 'BUYER' ? t.roles.buyer : t.roles.supplier
 
   return (
@@ -52,8 +52,8 @@ export function UserMenu({ user }: UserMenuProps) {
             <div className="px-4 py-3 border-b border-gray-200">
               <p className="text-sm font-medium text-gray-900">{displayName}</p>
               <p className="text-xs text-gray-500">{user.email}</p>
-              {user.businessName && (
-                <p className="text-xs text-blue-900 mt-1">{user.businessName}</p>
+              {user.storeName && (
+                <p className="text-xs text-blue-900 mt-1">{user.storeName}</p>
               )}
             </div>
             <div className="py-2">

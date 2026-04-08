@@ -14,11 +14,11 @@ import { toggleUserActive } from '@/actions/users'
 interface Props {
   users: Array<{
     id: string
-    email: string
-    name: string
+    email: string | null
+    username: string
     phone: string | null
     role: string
-    businessName: string | null
+    storeName: string | null
     city: string | null
     isActive: boolean
     createdAt: Date
@@ -122,8 +122,8 @@ export function UserListClient({ users, total, pages, currentPage, currentRole, 
                       <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-3">
                           <div>
-                            <p className="font-medium text-gray-900">{user.name}</p>
-                            {user.businessName && <p className="text-xs text-gray-500">{user.businessName}</p>}
+                            <p className="font-medium text-gray-900">{user.username}</p>
+                            {user.storeName && <p className="text-xs text-gray-500">{user.storeName}</p>}
                           </div>
                         </td>
                         <td className="py-3 text-gray-600">{user.email}</td>

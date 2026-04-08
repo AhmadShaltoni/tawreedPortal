@@ -15,7 +15,7 @@ export default async function AdminOrdersPage({
 
   return (
     <OrderListClient
-      orders={orders}
+      orders={orders as any}
       total={total}
       pages={pages}
       currentPage={page}

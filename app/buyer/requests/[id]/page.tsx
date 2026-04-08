@@ -200,7 +200,7 @@ export default async function RequestDetailPage({
                             <User className="w-5 h-5 text-gray-600" />
                           </div>
                           <div>
-                            <p className="font-medium">{offer.supplier.businessName || offer.supplier.name}</p>
+                            <p className="font-medium">{offer.supplier.storeName || offer.supplier.username}</p>
                             <p className="text-sm text-gray-500">{offer.supplier.city}</p>
                           </div>
                         </div>
