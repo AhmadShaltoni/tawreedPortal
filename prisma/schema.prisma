@@ -109,6 +109,15 @@ model User {
   businessAddress String?
   city          String?
   
+  // Structured location
+  cityId        String?
+  cityRef       City?     @relation(fields: [cityId], references: [id])
+  areaId        String?
+  areaRef       Area?     @relation(fields: [areaId], references: [id])
+  latitude      Float?
+  longitude     Float?
+  address       String?
+  
   // For suppliers: areas they can deliver to
   deliveryAreas String[]
   
@@ -132,6 +141,8 @@ model User {
   
   @@index([role])
   @@index([city])
+  @@index([cityId])
+  @@index([areaId])
 }
 
 // Purchase Request (RFQ - Request for Quotation)
@@ -277,6 +288,11 @@ model OrderItem {
   productNameEn String?
   productImage  String?
   
+  // Unit snapshot (captures which unit was selected at order time)
+  unitLabel     String?    // e.g., "كرتونة (36 قطعة)"
+  unitLabelEn   String?    // e.g., "Carton (36 pieces)"
+  piecesPerUnit Int       @default(1) // How many pieces in the selected unit
+  
   // Pricing
   quantity      Int
   unit          Unit
@@ -326,8 +342,8 @@ model Product {
   description     String?   // Arabic description
   descriptionEn   String?   // English description
   
-  // Pricing
-  price           Float     // Current price (JOD)
+  // Pricing (default unit price, kept for backward compatibility)
+  price           Float     // Current price (JOD) - default unit price
   compareAtPrice  Float?    // Original price for showing discount
   
   // Media
@@ -353,12 +369,38 @@ model Product {
   updatedAt       DateTime  @updatedAt
   
   // Relations
+  units           ProductUnit[]  // Multiple selling units (piece, dozen, carton...)
   cartItems       CartItem[]
   orderItems      OrderItem[]
   
   @@index([categoryId])
   @@index([isActive])
   @@index([sortOrder])
+}
+
+// Product selling unit (e.g., piece, dozen, carton with different prices)
+model ProductUnit {
+  id              String    @id @default(cuid())
+  
+  unit            Unit      // PIECE, DOZEN, CARTON, BOX, etc.
+  label           String    // Arabic label: "قطعة", "درزن", "كرتونة"
+  labelEn         String?   // English label: "Piece", "Dozen", "Carton"
+  piecesPerUnit   Int       @default(1)  // 1 for piece, 12 for dozen, 36 for carton
+  price           Float     // Price for this unit (JOD)
+  compareAtPrice  Float?    // Original price before discount for this unit
+  isDefault       Boolean   @default(false) // Default unit shown in product card
+  sortOrder       Int       @default(0)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  productId       String
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems       CartItem[]
+  
+  @@unique([productId, unit]) // No duplicate unit per product
+  @@index([productId])
 }
 
 // Shopping cart item (server-side cart for mobile app)
@@ -376,7 +418,11 @@ model CartItem {
   productId   String
   product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   
-  @@unique([buyerId, productId]) // One cart entry per product per buyer
+  // Selected unit (optional - if null, uses product default unit/price)
+  productUnitId String?
+  productUnit   ProductUnit? @relation(fields: [productUnitId], references: [id])
+  
+  @@unique([buyerId, productId, productUnitId]) // One cart entry per product+unit per buyer
   @@index([buyerId])
 }
 
@@ -452,4 +498,44 @@ model DeviceToken {
   
   @@index([userId])
   @@index([isActive])
+}
+
+// ============================================
+// LOCATION MODELS
+// ============================================
+
+// Jordan cities
+model City {
+  id        String   @id @default(cuid())
+  name      String   // Arabic name
+  nameEn    String   // English name
+  sortOrder Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  areas     Area[]
+  users     User[]
+
+  @@index([sortOrder])
+}
+
+// Areas within a city
+model Area {
+  id        String   @id @default(cuid())
+  name      String   // Arabic name
+  nameEn    String   // English name
+  sortOrder Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  cityId    String
+  city      City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  users     User[]
+
+  @@index([cityId])
+  @@index([sortOrder])
 }

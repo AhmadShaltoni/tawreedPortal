@@ -18,6 +18,161 @@ const categories = [
   { name: 'أخرى', nameEn: 'Other', slug: 'other', sortOrder: 12 },
 ]
 
+// All Jordan cities with their areas
+const jordanCities: { name: string; nameEn: string; sortOrder: number; areas: { name: string; nameEn: string }[] }[] = [
+  {
+    name: 'عمّان', nameEn: 'Amman', sortOrder: 1,
+    areas: [
+      { name: 'الجبيهة', nameEn: 'Jubeiha' },
+      { name: 'طبربور', nameEn: 'Tabarbour' },
+      { name: 'أبو نصير', nameEn: 'Abu Nsair' },
+      { name: 'شفا بدران', nameEn: 'Shafa Badran' },
+      { name: 'صويلح', nameEn: 'Sweileh' },
+      { name: 'تلاع العلي', nameEn: 'Tlaa Al-Ali' },
+      { name: 'خلدا', nameEn: 'Khalda' },
+      { name: 'عبدون', nameEn: 'Abdoun' },
+      { name: 'الرابية', nameEn: 'Al-Rabiyeh' },
+      { name: 'دير غبار', nameEn: 'Deir Ghbar' },
+      { name: 'الشميساني', nameEn: 'Shmeisani' },
+      { name: 'جبل عمّان', nameEn: 'Jabal Amman' },
+      { name: 'جبل الحسين', nameEn: 'Jabal Al-Hussein' },
+      { name: 'جبل اللويبدة', nameEn: 'Jabal Al-Lweibdeh' },
+      { name: 'وسط البلد', nameEn: 'Downtown' },
+      { name: 'ماركا', nameEn: 'Marka' },
+      { name: 'الهاشمي الشمالي', nameEn: 'Al-Hashmi Al-Shamali' },
+      { name: 'الأشرفية', nameEn: 'Ashrafiyeh' },
+      { name: 'جبل التاج', nameEn: 'Jabal Al-Taj' },
+      { name: 'جبل النصر', nameEn: 'Jabal Al-Nasr' },
+      { name: 'جبل النظيف', nameEn: 'Jabal Al-Natheef' },
+      { name: 'سحاب', nameEn: 'Sahab' },
+      { name: 'القويسمة', nameEn: 'Al-Qweismeh' },
+      { name: 'أم نوارة', nameEn: 'Um Nowarah' },
+      { name: 'الجيزة', nameEn: 'Al-Jizah' },
+      { name: 'الموقر', nameEn: 'Al-Muwaqqar' },
+      { name: 'ناعور', nameEn: 'Na\'ur' },
+      { name: 'وادي السير', nameEn: 'Wadi Al-Seer' },
+      { name: 'مرج الحمام', nameEn: 'Marj Al-Hamam' },
+      { name: 'الظهير', nameEn: 'Al-Thahir' },
+      { name: 'ضاحية الرشيد', nameEn: 'Dahiyat Al-Rasheed' },
+      { name: 'ضاحية الأمير حسن', nameEn: 'Dahiyat Al-Amir Hassan' },
+      { name: 'الياسمين', nameEn: 'Al-Yasmin' },
+      { name: 'الجندويل', nameEn: 'Al-Jandaweel' },
+      { name: 'أم أذينة', nameEn: 'Um Uthaina' },
+    ],
+  },
+  {
+    name: 'إربد', nameEn: 'Irbid', sortOrder: 2,
+    areas: [
+      { name: 'وسط إربد', nameEn: 'Irbid Downtown' },
+      { name: 'الحصن', nameEn: 'Al-Husn' },
+      { name: 'الرمثا', nameEn: 'Al-Ramtha' },
+      { name: 'بني كنانة', nameEn: 'Bani Kinanah' },
+      { name: 'الأغوار الشمالية', nameEn: 'Northern Ghors' },
+      { name: 'الكورة', nameEn: 'Al-Koura' },
+      { name: 'بني عبيد', nameEn: 'Bani Obeid' },
+      { name: 'المزار الشمالي', nameEn: 'Al-Mazar Al-Shamali' },
+      { name: 'الطيبة', nameEn: 'Al-Taybeh' },
+      { name: 'الوسطية', nameEn: 'Al-Wastiyyeh' },
+    ],
+  },
+  {
+    name: 'الزرقاء', nameEn: 'Zarqa', sortOrder: 3,
+    areas: [
+      { name: 'وسط الزرقاء', nameEn: 'Zarqa Downtown' },
+      { name: 'الزرقاء الجديدة', nameEn: 'New Zarqa' },
+      { name: 'الرصيفة', nameEn: 'Russeifa' },
+      { name: 'الهاشمية', nameEn: 'Al-Hashimiyya' },
+      { name: 'الأزرق', nameEn: 'Azraq' },
+      { name: 'بيرين', nameEn: 'Bireen' },
+    ],
+  },
+  {
+    name: 'المفرق', nameEn: 'Mafraq', sortOrder: 4,
+    areas: [
+      { name: 'وسط المفرق', nameEn: 'Mafraq Downtown' },
+      { name: 'رحاب', nameEn: 'Rehab' },
+      { name: 'الصالحية', nameEn: 'Al-Salhiyya' },
+      { name: 'بلدة الخالدية', nameEn: 'Al-Khalidiyya' },
+      { name: 'صبحا', nameEn: 'Sabha' },
+    ],
+  },
+  {
+    name: 'عجلون', nameEn: 'Ajloun', sortOrder: 5,
+    areas: [
+      { name: 'قلعة عجلون', nameEn: 'Ajloun Castle' },
+      { name: 'كفرنجة', nameEn: 'Kufranjah' },
+      { name: 'عنجرة', nameEn: 'Anjarah' },
+      { name: 'عبين', nameEn: 'Abeen' },
+      { name: 'راجب', nameEn: 'Rajeb' },
+    ],
+  },
+  {
+    name: 'جرش', nameEn: 'Jerash', sortOrder: 6,
+    areas: [
+      { name: 'وسط جرش', nameEn: 'Jerash Downtown' },
+      { name: 'سوف', nameEn: 'Souf' },
+      { name: 'المصطبة', nameEn: 'Al-Mastabah' },
+      { name: 'برما', nameEn: 'Burma' },
+      { name: 'ساكب', nameEn: 'Sakeb' },
+    ],
+  },
+  {
+    name: 'مادبا', nameEn: 'Madaba', sortOrder: 7,
+    areas: [
+      { name: 'وسط مادبا', nameEn: 'Madaba Downtown' },
+      { name: 'ذيبان', nameEn: 'Dhiban' },
+      { name: 'ماعين', nameEn: 'Ma\'in' },
+    ],
+  },
+  {
+    name: 'البلقاء', nameEn: 'Balqa', sortOrder: 8,
+    areas: [
+      { name: 'السلط', nameEn: 'Al-Salt' },
+      { name: 'عين الباشا', nameEn: 'Ain Al-Basha' },
+      { name: 'الفحيص', nameEn: 'Al-Fuhais' },
+      { name: 'ماحص', nameEn: 'Mahis' },
+      { name: 'دير علّا', nameEn: 'Deir Alla' },
+      { name: 'الشونة الجنوبية', nameEn: 'South Shouneh' },
+    ],
+  },
+  {
+    name: 'الكرك', nameEn: 'Karak', sortOrder: 9,
+    areas: [
+      { name: 'وسط الكرك', nameEn: 'Karak Downtown' },
+      { name: 'المزار الجنوبي', nameEn: 'Al-Mazar Al-Janoubi' },
+      { name: 'الأغوار الجنوبية', nameEn: 'Southern Ghors' },
+      { name: 'القصر', nameEn: 'Al-Qasr' },
+      { name: 'مؤتة', nameEn: 'Mu\'tah' },
+    ],
+  },
+  {
+    name: 'الطفيلة', nameEn: 'Tafilah', sortOrder: 10,
+    areas: [
+      { name: 'وسط الطفيلة', nameEn: 'Tafilah Downtown' },
+      { name: 'بصيرا', nameEn: 'Busayra' },
+      { name: 'الحسا', nameEn: 'Al-Hasa' },
+    ],
+  },
+  {
+    name: 'معان', nameEn: 'Ma\'an', sortOrder: 11,
+    areas: [
+      { name: 'وسط معان', nameEn: 'Ma\'an Downtown' },
+      { name: 'الشوبك', nameEn: 'Al-Shobak' },
+      { name: 'البتراء / وادي موسى', nameEn: 'Petra / Wadi Musa' },
+      { name: 'الحسينية', nameEn: 'Al-Hussainiyya' },
+    ],
+  },
+  {
+    name: 'العقبة', nameEn: 'Aqaba', sortOrder: 12,
+    areas: [
+      { name: 'وسط العقبة', nameEn: 'Aqaba Downtown' },
+      { name: 'المنطقة الاقتصادية', nameEn: 'Economic Zone' },
+      { name: 'الشلّالة', nameEn: 'Al-Shallalah' },
+      { name: 'التاسعة', nameEn: 'Al-Tase\'a' },
+    ],
+  },
+]
+
 async function main() {
   console.log('🌱 Seeding database...')
 
@@ -30,6 +185,42 @@ async function main() {
     })
   }
   console.log(`✅ Seeded ${categories.length} categories`)
+
+  // Seed Jordan cities and areas
+  let totalAreas = 0
+  for (const cityData of jordanCities) {
+    const { areas, ...cityFields } = cityData
+
+    // Upsert city by nameEn (unique enough for seed)
+    let city = await prisma.city.findFirst({ where: { nameEn: cityFields.nameEn } })
+    if (!city) {
+      city = await prisma.city.create({ data: cityFields })
+    } else {
+      city = await prisma.city.update({
+        where: { id: city.id },
+        data: { name: cityFields.name, sortOrder: cityFields.sortOrder },
+      })
+    }
+
+    // Upsert areas
+    for (const areaData of areas) {
+      const existingArea = await prisma.area.findFirst({
+        where: { nameEn: areaData.nameEn, cityId: city.id },
+      })
+      if (!existingArea) {
+        await prisma.area.create({
+          data: { ...areaData, cityId: city.id },
+        })
+      } else {
+        await prisma.area.update({
+          where: { id: existingArea.id },
+          data: { name: areaData.name },
+        })
+      }
+      totalAreas++
+    }
+  }
+  console.log(`✅ Seeded ${jordanCities.length} cities with ${totalAreas} areas`)
 
   // Seed admin user
   const adminPhone = '0791234567'

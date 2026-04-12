@@ -17,13 +17,20 @@ export async function GET(request: NextRequest) {
     where: { buyerId: user.id },
     include: {
       product: {
-        include: { category: { select: { id: true, name: true, nameEn: true, slug: true } } },
+        include: {
+          category: { select: { id: true, name: true, nameEn: true, slug: true } },
+          units: { orderBy: { sortOrder: 'asc' } },
+        },
       },
+      productUnit: true,
     },
     orderBy: { createdAt: 'desc' },
   })
 
-  const total = cartItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+  const total = cartItems.reduce((sum, item) => {
+    const unitPrice = item.productUnit?.price ?? item.product.price
+    return sum + unitPrice * item.quantity
+  }, 0)
 
   return apiResponse({ items: cartItems, total, itemCount: cartItems.length })
 }
@@ -45,6 +52,14 @@ export async function POST(request: NextRequest) {
     return apiError('Product not found or unavailable', 404)
   }
 
+  // Validate productUnitId if provided
+  if (validated.data.productUnitId) {
+    const productUnit = await db.productUnit.findUnique({ where: { id: validated.data.productUnitId } })
+    if (!productUnit || productUnit.productId !== product.id) {
+      return apiError('Invalid product unit', 400)
+    }
+  }
+
   // Check minimum order quantity
   if (validated.data.quantity < product.minOrderQuantity) {
     return apiError(`Minimum order quantity is ${product.minOrderQuantity}`, 400)
@@ -55,19 +70,38 @@ export async function POST(request: NextRequest) {
     return apiError(`Only ${product.stock} items available`, 400)
   }
 
-  // Upsert cart item
-  const cartItem = await db.cartItem.upsert({
-    where: { buyerId_productId: { buyerId: user.id, productId: validated.data.productId } },
-    create: {
+  const productUnitId = validated.data.productUnitId ?? null
+
+  // Find existing cart item with same product+unit combo
+  const existing = await db.cartItem.findFirst({
+    where: {
       buyerId: user.id,
       productId: validated.data.productId,
-      quantity: validated.data.quantity,
+      productUnitId: productUnitId,
     },
-    update: {
-      quantity: validated.data.quantity,
-    },
-    include: { product: true },
   })
+
+  let cartItem
+  if (existing) {
+    // Item already exists - increment the quantity
+    const newQuantity = existing.quantity + validated.data.quantity
+    cartItem = await db.cartItem.update({
+      where: { id: existing.id },
+      data: { quantity: newQuantity },
+      include: { product: true, productUnit: true },
+    })
+  } else {
+    // New item - create it
+    cartItem = await db.cartItem.create({
+      data: {
+        buyerId: user.id,
+        productId: validated.data.productId,
+        productUnitId: productUnitId,
+        quantity: validated.data.quantity,
+      },
+      include: { product: true, productUnit: true },
+    })
+  }
 
   return apiResponse({ item: cartItem }, 201)
 }

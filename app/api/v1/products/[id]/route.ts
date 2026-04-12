@@ -16,7 +16,23 @@ export async function GET(
 
   const product = await db.product.findUnique({
     where: { id, isActive: true },
-    include: { category: { select: { id: true, name: true, nameEn: true, slug: true } } },
+    include: {
+      category: { select: { id: true, name: true, nameEn: true, slug: true } },
+      units: { 
+        orderBy: { sortOrder: 'asc' },
+        select: {
+          id: true,
+          unit: true,
+          label: true,
+          labelEn: true,
+          piecesPerUnit: true,
+          price: true,
+          compareAtPrice: true,
+          isDefault: true,
+          sortOrder: true,
+        },
+      },
+    },
   })
 
   if (!product) return apiError('Product not found', 404)

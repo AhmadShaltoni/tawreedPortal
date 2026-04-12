@@ -36,6 +36,10 @@ async function handleLogin(body: Record<string, unknown>) {
 
     const user = await db.user.findUnique({
       where: { phone: validated.data.phone },
+      include: {
+        cityRef: { select: { id: true, name: true, nameEn: true } },
+        areaRef: { select: { id: true, name: true, nameEn: true } },
+      },
     });
 
     if (!user || !user.isActive) {
@@ -115,6 +119,12 @@ async function handleLogin(body: Record<string, unknown>) {
         username: user.username,
         storeName: user.storeName,
         role: user.role,
+        cityId: user.cityId,
+        areaId: user.areaId,
+        latitude: user.latitude,
+        longitude: user.longitude,
+        city: user.cityRef,
+        area: user.areaRef,
       },
     });
   } catch (error) {
@@ -202,6 +212,12 @@ async function handleRegister(body: Record<string, unknown>) {
           username: user.username,
           storeName: user.storeName,
           role: user.role,
+          cityId: user.cityId,
+          areaId: user.areaId,
+          latitude: user.latitude,
+          longitude: user.longitude,
+          city: null,
+          area: null,
         },
       },
       201,

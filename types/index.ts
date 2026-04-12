@@ -92,11 +92,29 @@ export interface OrderItem {
   productName: string
   productNameEn: string | null
   productImage: string | null
+  unitLabel: string | null
+  unitLabelEn: string | null
+  piecesPerUnit: number
   quantity: number
   unit: Unit
   pricePerUnit: number
   totalPrice: number
   orderId: string
+}
+
+export interface ProductUnit {
+  id: string
+  unit: Unit
+  label: string
+  labelEn: string | null
+  piecesPerUnit: number
+  price: number
+  compareAtPrice: number | null
+  isDefault: boolean
+  sortOrder: number
+  productId: string
+  createdAt: Date
+  updatedAt: Date
 }
 
 // E-commerce models
@@ -139,6 +157,7 @@ export interface CartItem {
   quantity: number
   buyerId: string
   productId: string
+  productUnitId: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -187,8 +206,14 @@ export type ProductWithCategory = Product & {
   category: Category
 }
 
+export type ProductWithUnits = Product & {
+  category: Category
+  units: ProductUnit[]
+}
+
 export type CartItemWithProduct = CartItem & {
   product: ProductWithCategory
+  productUnit: ProductUnit | null
 }
 
 export type CategoryWithProducts = Category & {

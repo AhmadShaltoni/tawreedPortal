@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowRight, Trash2 } from 'lucide-react'
+import { ArrowRight, Trash2, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -12,6 +12,28 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { useLanguage } from '@/lib/LanguageContext'
 import { updateProduct, deleteProduct } from '@/actions/products'
+
+interface UnitEntry {
+  unit: string
+  label: string
+  labelEn: string
+  piecesPerUnit: number
+  price: number
+  compareAtPrice: number | null
+  isDefault: boolean
+}
+
+interface ProductUnitData {
+  id: string
+  unit: string
+  label: string
+  labelEn: string | null
+  piecesPerUnit: number
+  price: number
+  compareAtPrice: number | null
+  isDefault: boolean
+  sortOrder: number
+}
 
 interface Props {
   product: {
@@ -30,20 +52,59 @@ interface Props {
     stock: number
     minOrderQuantity: number
     isActive: boolean
+    units?: ProductUnitData[]
   }
   categories: Array<{ id: string; name: string; nameEn: string | null; slug: string }>
 }
 
 const UNIT_OPTIONS = [
+  { value: 'PIECE', label: 'حبة' },
+  { value: 'DOZEN', label: 'درزن' },
+  { value: 'CARTON', label: 'كرتون' },
+  { value: 'BOX', label: 'صندوق' },
+  { value: 'PACK', label: 'عبوة' },
   { value: 'KG', label: 'كيلو' },
   { value: 'GRAM', label: 'جرام' },
   { value: 'LITER', label: 'لتر' },
-  { value: 'PIECE', label: 'حبة' },
-  { value: 'PACK', label: 'عبوة' },
-  { value: 'BOX', label: 'صندوق' },
-  { value: 'CARTON', label: 'كرتون' },
-  { value: 'DOZEN', label: 'درزن' },
+  { value: 'PALLET', label: 'طبلية' },
 ]
+
+const UNIT_LABEL_MAP: Record<string, { ar: string; en: string; defaultPieces: number }> = {
+  PIECE:  { ar: 'قطعة', en: 'Piece', defaultPieces: 1 },
+  DOZEN:  { ar: 'درزن', en: 'Dozen', defaultPieces: 12 },
+  CARTON: { ar: 'كرتونة', en: 'Carton', defaultPieces: 1 },
+  BOX:    { ar: 'صندوق', en: 'Box', defaultPieces: 1 },
+  PACK:   { ar: 'عبوة', en: 'Pack', defaultPieces: 1 },
+  KG:     { ar: 'كيلو', en: 'Kilogram', defaultPieces: 1 },
+  GRAM:   { ar: 'جرام', en: 'Gram', defaultPieces: 1 },
+  LITER:  { ar: 'لتر', en: 'Liter', defaultPieces: 1 },
+  PALLET: { ar: 'طبلية', en: 'Pallet', defaultPieces: 1 },
+}
+
+function buildInitialUnits(product: Props['product']): UnitEntry[] {
+  if (product.units && product.units.length > 0) {
+    return product.units.map((u) => ({
+      unit: u.unit,
+      label: u.label,
+      labelEn: u.labelEn || '',
+      piecesPerUnit: u.piecesPerUnit,
+      price: u.price,
+      compareAtPrice: u.compareAtPrice ?? null,
+      isDefault: u.isDefault,
+    }))
+  }
+  // Fallback: create single unit from product's existing price/unit
+  const info = UNIT_LABEL_MAP[product.unit] || { ar: product.unit, en: product.unit, defaultPieces: 1 }
+  return [{
+    unit: product.unit,
+    label: info.ar,
+    labelEn: info.en,
+    piecesPerUnit: info.defaultPieces,
+    price: product.price,
+    compareAtPrice: product.compareAtPrice ?? null,
+    isDefault: true,
+  }]
+}
 
 export function EditProductForm({ product, categories }: Props) {
   const { t, dir, lang } = useLanguage()
@@ -52,6 +113,38 @@ export function EditProductForm({ product, categories }: Props) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [units, setUnits] = useState<UnitEntry[]>(buildInitialUnits(product))
+
+  function addUnit() {
+    setUnits([...units, { unit: 'DOZEN', label: 'درزن', labelEn: 'Dozen', piecesPerUnit: 12, price: 0, compareAtPrice: null, isDefault: false }])
+  }
+
+  function removeUnit(index: number) {
+    if (units.length <= 1) return
+    const updated = units.filter((_, i) => i !== index)
+    if (!updated.some((u) => u.isDefault)) updated[0].isDefault = true
+    setUnits(updated)
+  }
+
+  function updateUnit(index: number, field: keyof UnitEntry, value: string | number | boolean) {
+    const updated = [...units]
+    if (field === 'unit') {
+      const info = UNIT_LABEL_MAP[value as string]
+      updated[index] = {
+        ...updated[index],
+        unit: value as string,
+        label: info?.ar ?? '',
+        labelEn: info?.en ?? '',
+        piecesPerUnit: info?.defaultPieces ?? 1,
+      }
+    } else if (field === 'isDefault' && value === true) {
+      updated.forEach((u, i) => { u.isDefault = i === index })
+    } else {
+      const updatedEntry = { ...updated[index], [field]: value }
+      updated[index] = updatedEntry
+    }
+    setUnits(updated)
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -61,6 +154,17 @@ export function EditProductForm({ product, categories }: Props) {
 
     const formData = new FormData(e.currentTarget)
     formData.set('isActive', String(product.isActive))
+
+    // Set price and unit from default unit entry
+    const defaultUnit = units.find((u) => u.isDefault) || units[0]
+    formData.set('price', String(defaultUnit.price))
+    formData.set('unit', defaultUnit.unit)
+
+    // Add units as JSON
+    formData.set('units', JSON.stringify(units.map((u, i) => ({
+      ...u,
+      sortOrder: i,
+    }))))
 
     const result = await updateProduct(product.id, formData)
 
@@ -128,24 +232,145 @@ export function EditProductForm({ product, categories }: Props) {
             <Textarea label={t.productManagement.description} name="description" defaultValue={product.description || ''} error={fieldErrors.description?.[0]} />
             <Textarea label={t.productManagement.descriptionEn} name="descriptionEn" dir="ltr" defaultValue={product.descriptionEn || ''} error={fieldErrors.descriptionEn?.[0]} />
 
-            <div className="grid grid-cols-2 gap-4">
-              <Input label={t.productManagement.price} name="price" type="number" step="0.01" min="0" required defaultValue={product.price} error={fieldErrors.price?.[0]} />
-              <Input label={t.productManagement.compareAtPrice} name="compareAtPrice" type="number" step="0.01" min="0" defaultValue={product.compareAtPrice || ''} error={fieldErrors.compareAtPrice?.[0]} />
+            {/* Category */}
+            <Select label={t.productManagement.category} name="categoryId" options={categoryOptions} required defaultValue={product.categoryId} error={fieldErrors.categoryId?.[0]} />
+
+            {/* Selling Units - right after category */}
+            <div className="border-t pt-4 mt-4">
+              <div className={`flex items-center justify-between mb-3 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                <h3 className="text-base font-semibold text-gray-900">{t.productManagement.sellingUnits}</h3>
+                <button
+                  type="button"
+                  onClick={addUnit}
+                  className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  <Plus className="w-4 h-4" />
+                  {t.productManagement.addUnit}
+                </button>
+              </div>
+              <div className="space-y-3">
+                {units.map((entry, index) => (
+                  <div
+                    key={index}
+                    className={`border rounded-lg p-4 space-y-3 ${entry.isDefault ? 'border-blue-300 bg-blue-50/50' : 'border-gray-200'}`}
+                  >
+                    <div className={`flex items-center justify-between ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          checked={entry.isDefault}
+                          onChange={() => updateUnit(index, 'isDefault', true)}
+                          className="text-blue-600"
+                        />
+                        <span className={entry.isDefault ? 'font-semibold text-blue-700' : 'text-gray-600'}>
+                          {t.productManagement.defaultUnit}
+                        </span>
+                      </label>
+                      {units.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeUnit(index)}
+                          className="text-red-500 hover:text-red-700 p-1"
+                          title={t.productManagement.removeUnit}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Unit Type */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.unitType}</label>
+                        <select
+                          value={entry.unit}
+                          onChange={(e) => updateUnit(index, 'unit', e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        >
+                          {UNIT_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Pieces per unit - shown only when unit is NOT PIECE */}
+                      {entry.unit !== 'PIECE' ? (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.piecesPerUnit}</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={entry.piecesPerUnit}
+                            onChange={(e) => updateUnit(index, 'piecesPerUnit', parseInt(e.target.value) || 1)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                      ) : <div />}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Unit Price */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.unitPrice}</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={entry.price || ''}
+                          onChange={(e) => updateUnit(index, 'price', parseFloat(e.target.value) || 0)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          required
+                        />
+                      </div>
+
+                      {/* Compare at Price per unit */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.unitCompareAtPrice}</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={entry.compareAtPrice ?? ''}
+                          onChange={(e) => updateUnit(index, 'compareAtPrice', e.target.value ? parseFloat(e.target.value) : null as unknown as number)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Label AR */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.unitLabel}</label>
+                        <input
+                          type="text"
+                          value={entry.label}
+                          onChange={(e) => updateUnit(index, 'label', e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          required
+                        />
+                      </div>
+
+                      {/* Label EN */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.unitLabelEn}</label>
+                        <input
+                          type="text"
+                          value={entry.labelEn}
+                          onChange={(e) => updateUnit(index, 'labelEn', e.target.value)}
+                          dir="ltr"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <Select label={t.productManagement.category} name="categoryId" options={categoryOptions} required defaultValue={product.categoryId} error={fieldErrors.categoryId?.[0]} />
-              <Select label={t.productManagement.unit} name="unit" options={UNIT_OPTIONS} required defaultValue={product.unit} error={fieldErrors.unit?.[0]} />
-            </div>
-
+            {/* Stock & Min Order */}
             <div className="grid grid-cols-2 gap-4">
               <Input label={t.productManagement.stock} name="stock" type="number" min="0" required defaultValue={product.stock} error={fieldErrors.stock?.[0]} />
               <Input label={t.productManagement.minOrderQuantity} name="minOrderQuantity" type="number" min="1" required defaultValue={product.minOrderQuantity} error={fieldErrors.minOrderQuantity?.[0]} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Input label={t.productManagement.sku} name="sku" dir="ltr" defaultValue={product.sku || ''} error={fieldErrors.sku?.[0]} />
-              <Input label={t.productManagement.barcode} name="barcode" dir="ltr" defaultValue={product.barcode || ''} error={fieldErrors.barcode?.[0]} />
             </div>
 
             <div>

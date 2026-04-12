@@ -2,7 +2,7 @@
 
 import { db } from '@/lib/db'
 import { requireRole } from '@/lib/auth'
-import { createProductSchema, updateProductSchema } from '@/lib/validations'
+import { createProductSchema, updateProductSchema, productUnitSchema } from '@/lib/validations'
 import { saveProductImage, deleteProductImage } from '@/lib/upload'
 import type { ActionResponse } from '@/types'
 import { revalidatePath } from 'next/cache'
@@ -43,12 +43,68 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
     }
   }
 
-  const product = await db.product.create({
-    data: {
-      ...validated.data,
-      image: imagePath,
-      isActive: validated.data.isActive ?? true,
-    },
+  // Parse and validate units BEFORE creating the product
+  const unitsJson = formData.get('units')
+  console.log('[createProduct] Raw units from formData:', typeof unitsJson, unitsJson ? String(unitsJson).substring(0, 200) : 'NULL')
+  
+  const validatedUnits: Array<{
+    unit: string
+    label: string
+    labelEn?: string
+    piecesPerUnit: number
+    price: number
+    compareAtPrice?: number | null
+    isDefault: boolean
+    sortOrder: number
+  }> = []
+
+  if (unitsJson && typeof unitsJson === 'string') {
+    try {
+      const unitsData = JSON.parse(unitsJson)
+      console.log('[createProduct] Parsed units count:', Array.isArray(unitsData) ? unitsData.length : 'NOT_ARRAY')
+      if (Array.isArray(unitsData)) {
+        for (let i = 0; i < unitsData.length; i++) {
+          const unitResult = productUnitSchema.safeParse(unitsData[i])
+          if (unitResult.success) {
+            validatedUnits.push({
+              ...unitResult.data,
+              isDefault: unitResult.data.isDefault ?? false,
+              sortOrder: unitResult.data.sortOrder ?? i,
+            })
+          } else {
+            console.error(`[createProduct] Unit ${i} validation failed:`, JSON.stringify(unitResult.error.issues))
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[createProduct] Failed to parse units JSON:', err)
+    }
+  }
+
+  console.log('[createProduct] Valid units to create:', validatedUnits.length)
+
+  // Create product and units in a transaction
+  const product = await db.$transaction(async (tx) => {
+    const p = await tx.product.create({
+      data: {
+        ...validated.data,
+        image: imagePath,
+        isActive: validated.data.isActive ?? true,
+      },
+    })
+
+    // Create units
+    for (const unitData of validatedUnits) {
+      await tx.productUnit.create({
+        data: {
+          ...unitData,
+          productId: p.id,
+        },
+      })
+    }
+
+    console.log(`[createProduct] Product ${p.id} created with ${validatedUnits.length} units`)
+    return p
   })
 
   revalidatePath('/admin/products')
@@ -103,6 +159,70 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
       ...validated.data,
       ...(imagePath ? { image: imagePath } : {}),
     },
+  })
+
+  // Parse and validate units BEFORE updating
+  const unitsJson = formData.get('units')
+  console.log('[updateProduct] Raw units from formData:', typeof unitsJson, unitsJson ? String(unitsJson).substring(0, 200) : 'NULL')
+  
+  const validatedUnits: Array<{
+    unit: string
+    label: string
+    labelEn?: string
+    piecesPerUnit: number
+    price: number
+    compareAtPrice?: number | null
+    isDefault: boolean
+    sortOrder: number
+  }> = []
+
+  if (unitsJson && typeof unitsJson === 'string') {
+    try {
+      const unitsData = JSON.parse(unitsJson)
+      console.log('[updateProduct] Parsed units count:', Array.isArray(unitsData) ? unitsData.length : 'NOT_ARRAY')
+      if (Array.isArray(unitsData)) {
+        for (let i = 0; i < unitsData.length; i++) {
+          const unitResult = productUnitSchema.safeParse(unitsData[i])
+          if (unitResult.success) {
+            validatedUnits.push({
+              ...unitResult.data,
+              isDefault: unitResult.data.isDefault ?? false,
+              sortOrder: unitResult.data.sortOrder ?? i,
+            })
+          } else {
+            console.error(`[updateProduct] Unit ${i} validation failed:`, JSON.stringify(unitResult.error.issues))
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[updateProduct] Failed to parse units JSON:', err)
+    }
+  }
+
+  console.log('[updateProduct] Valid units to save:', validatedUnits.length)
+
+  // Update product and units in a transaction
+  await db.$transaction(async (tx) => {
+    await tx.product.update({
+      where: { id },
+      data: {
+        ...validated.data,
+        ...(imagePath ? { image: imagePath } : {}),
+      },
+    })
+
+    // Delete all existing units and recreate
+    await tx.productUnit.deleteMany({ where: { productId: id } })
+    for (const unitData of validatedUnits) {
+      await tx.productUnit.create({
+        data: {
+          ...unitData,
+          productId: id,
+        },
+      })
+    }
+
+    console.log(`[updateProduct] Product ${id} updated with ${validatedUnits.length} units`)
   })
 
   revalidatePath('/admin/products')
@@ -167,7 +287,7 @@ export async function getProducts(options?: {
   const [products, total] = await Promise.all([
     db.product.findMany({
       where,
-      include: { category: true },
+      include: { category: true, units: { orderBy: { sortOrder: 'asc' } } },
       orderBy: { sortOrder: 'asc' },
       skip: (page - 1) * limit,
       take: limit,
@@ -181,6 +301,9 @@ export async function getProducts(options?: {
 export async function getProductById(id: string) {
   return db.product.findUnique({
     where: { id },
-    include: { category: true },
+    include: { 
+      category: true, 
+      units: { orderBy: { sortOrder: 'asc' } } 
+    },
   })
 }

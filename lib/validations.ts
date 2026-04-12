@@ -84,6 +84,18 @@ export const updateOrderStatusSchema = z.object({
 // E-COMMERCE VALIDATIONS
 // ============================================
 
+// Product unit validation (for multi-unit pricing)
+export const productUnitSchema = z.object({
+  unit: z.enum(['KG', 'GRAM', 'LITER', 'PIECE', 'PACK', 'BOX', 'CARTON', 'DOZEN', 'PALLET']),
+  label: z.string().min(1, 'Unit label is required'),
+  labelEn: z.string().optional(),
+  piecesPerUnit: z.coerce.number().int().positive('Pieces per unit must be at least 1'),
+  price: z.coerce.number().positive('Price must be positive'),
+  compareAtPrice: z.coerce.number().positive().optional().nullable(),
+  isDefault: z.coerce.boolean().optional(),
+  sortOrder: z.coerce.number().int().optional(),
+})
+
 // Product validations
 export const createProductSchema = z.object({
   name: z.string().min(2, 'Product name is required'),
@@ -138,6 +150,7 @@ export const adminCreateUserSchema = z.object({
 export const addToCartSchema = z.object({
   productId: z.string().min(1, 'Product ID is required'),
   quantity: z.coerce.number().int().positive('Quantity must be at least 1'),
+  productUnitId: z.string().optional(),
 })
 
 export const updateCartItemSchema = z.object({

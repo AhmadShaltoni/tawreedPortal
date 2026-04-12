@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
   // Get cart items
   const cartItems = await db.cartItem.findMany({
     where: { buyerId: user.id },
-    include: { product: true },
+    include: { product: true, productUnit: true },
   })
 
   if (cartItems.length === 0) {
@@ -71,8 +71,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Calculate total
-  const totalPrice = cartItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+  // Calculate total (using selected unit price if available)
+  const totalPrice = cartItems.reduce((sum, item) => {
+    const unitPrice = item.productUnit?.price ?? item.product.price
+    return sum + unitPrice * item.quantity
+  }, 0)
 
   // Create order in transaction
   const order = await db.$transaction(async (tx) => {
@@ -89,16 +92,26 @@ export async function POST(request: NextRequest) {
           { status: 'PENDING', timestamp: new Date().toISOString(), note: null },
         ],
         items: {
-          create: cartItems.map((item) => ({
-            productId: item.product.id,
-            productName: item.product.name,
-            productNameEn: item.product.nameEn,
-            productImage: item.product.image,
-            quantity: item.quantity,
-            unit: item.product.unit,
-            pricePerUnit: item.product.price,
-            totalPrice: item.product.price * item.quantity,
-          })),
+          create: cartItems.map((item) => {
+            const unitPrice = item.productUnit?.price ?? item.product.price
+            const unit = item.productUnit?.unit ?? item.product.unit
+            const piecesPerUnit = item.productUnit?.piecesPerUnit ?? 1
+            const unitLabel = item.productUnit?.label ?? null
+            const unitLabelEn = item.productUnit?.labelEn ?? null
+            return {
+              productId: item.product.id,
+              productName: item.product.name,
+              productNameEn: item.product.nameEn,
+              productImage: item.product.image,
+              quantity: item.quantity,
+              unit,
+              pricePerUnit: unitPrice,
+              totalPrice: unitPrice * item.quantity,
+              piecesPerUnit,
+              unitLabel,
+              unitLabelEn,
+            }
+          }),
         },
       },
       include: { items: true },

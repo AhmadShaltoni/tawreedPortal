@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -16,16 +16,39 @@ interface Props {
   categories: Array<{ id: string; name: string; nameEn: string | null; slug: string }>
 }
 
+interface UnitEntry {
+  unit: string
+  label: string
+  labelEn: string
+  piecesPerUnit: number
+  price: number
+  compareAtPrice: number | null
+  isDefault: boolean
+}
+
 const UNIT_OPTIONS = [
+  { value: 'PIECE', label: 'حبة' },
+  { value: 'DOZEN', label: 'درزن' },
+  { value: 'CARTON', label: 'كرتون' },
+  { value: 'BOX', label: 'صندوق' },
+  { value: 'PACK', label: 'عبوة' },
   { value: 'KG', label: 'كيلو' },
   { value: 'GRAM', label: 'جرام' },
   { value: 'LITER', label: 'لتر' },
-  { value: 'PIECE', label: 'حبة' },
-  { value: 'PACK', label: 'عبوة' },
-  { value: 'BOX', label: 'صندوق' },
-  { value: 'CARTON', label: 'كرتون' },
-  { value: 'DOZEN', label: 'درزن' },
+  { value: 'PALLET', label: 'طبلية' },
 ]
+
+const UNIT_LABEL_MAP: Record<string, { ar: string; en: string; defaultPieces: number }> = {
+  PIECE:  { ar: 'قطعة', en: 'Piece', defaultPieces: 1 },
+  DOZEN:  { ar: 'درزن', en: 'Dozen', defaultPieces: 12 },
+  CARTON: { ar: 'كرتونة', en: 'Carton', defaultPieces: 1 },
+  BOX:    { ar: 'صندوق', en: 'Box', defaultPieces: 1 },
+  PACK:   { ar: 'عبوة', en: 'Pack', defaultPieces: 1 },
+  KG:     { ar: 'كيلو', en: 'Kilogram', defaultPieces: 1 },
+  GRAM:   { ar: 'جرام', en: 'Gram', defaultPieces: 1 },
+  LITER:  { ar: 'لتر', en: 'Liter', defaultPieces: 1 },
+  PALLET: { ar: 'طبلية', en: 'Pallet', defaultPieces: 1 },
+}
 
 export function NewProductForm({ categories }: Props) {
   const { t, dir, lang } = useLanguage()
@@ -33,6 +56,42 @@ export function NewProductForm({ categories }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [units, setUnits] = useState<UnitEntry[]>([
+    { unit: 'PIECE', label: 'قطعة', labelEn: 'Piece', piecesPerUnit: 1, price: 0, compareAtPrice: null, isDefault: true },
+  ])
+
+  function addUnit() {
+    setUnits([...units, { unit: 'DOZEN', label: 'درزن', labelEn: 'Dozen', piecesPerUnit: 12, price: 0, compareAtPrice: null, isDefault: false }])
+  }
+
+  function removeUnit(index: number) {
+    if (units.length <= 1) return
+    const updated = units.filter((_, i) => i !== index)
+    // If removed was default, make first one default
+    if (!updated.some((u) => u.isDefault)) updated[0].isDefault = true
+    setUnits(updated)
+  }
+
+  function updateUnit(index: number, field: keyof UnitEntry, value: string | number | boolean) {
+    const updated = [...units]
+    if (field === 'unit') {
+      const info = UNIT_LABEL_MAP[value as string]
+      updated[index] = {
+        ...updated[index],
+        unit: value as string,
+        label: info?.ar ?? '',
+        labelEn: info?.en ?? '',
+        piecesPerUnit: info?.defaultPieces ?? 1,
+      }
+    } else if (field === 'isDefault' && value === true) {
+      // Only one default
+      updated.forEach((u, i) => { u.isDefault = i === index })
+    } else {
+      const updatedEntry = { ...updated[index], [field]: value }
+      updated[index] = updatedEntry
+    }
+    setUnits(updated)
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -42,6 +101,24 @@ export function NewProductForm({ categories }: Props) {
 
     const formData = new FormData(e.currentTarget)
     formData.set('isActive', 'true')
+
+    // Set price and unit from default unit entry
+    const defaultUnit = units.find((u) => u.isDefault) || units[0]
+    formData.set('price', String(defaultUnit.price))
+    formData.set('unit', defaultUnit.unit)
+
+    // Add units as JSON
+    const unitsPayload = units.map((u, i) => ({
+      ...u,
+      sortOrder: i,
+    }))
+    formData.set('units', JSON.stringify(unitsPayload))
+
+    // DEBUG: Log what we're sending
+    console.log('[NewProductForm] Units state:', JSON.stringify(units))
+    console.log('[NewProductForm] Units payload:', JSON.stringify(unitsPayload))
+    console.log('[NewProductForm] formData units:', formData.get('units'))
+    console.log('[NewProductForm] All formData keys:', [...formData.keys()])
 
     const result = await createProduct(formData)
 
@@ -110,43 +187,145 @@ export function NewProductForm({ categories }: Props) {
               error={fieldErrors.descriptionEn?.[0]}
             />
 
-            {/* Price & Compare at Price */}
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label={t.productManagement.price}
-                name="price"
-                type="number"
-                step="0.01"
-                min="0"
-                required
-                error={fieldErrors.price?.[0]}
-              />
-              <Input
-                label={t.productManagement.compareAtPrice}
-                name="compareAtPrice"
-                type="number"
-                step="0.01"
-                min="0"
-                error={fieldErrors.compareAtPrice?.[0]}
-              />
-            </div>
+            {/* Category */}
+            <Select
+              label={t.productManagement.category}
+              name="categoryId"
+              options={categoryOptions}
+              required
+              error={fieldErrors.categoryId?.[0]}
+            />
 
-            {/* Category & Unit */}
-            <div className="grid grid-cols-2 gap-4">
-              <Select
-                label={t.productManagement.category}
-                name="categoryId"
-                options={categoryOptions}
-                required
-                error={fieldErrors.categoryId?.[0]}
-              />
-              <Select
-                label={t.productManagement.unit}
-                name="unit"
-                options={UNIT_OPTIONS}
-                required
-                error={fieldErrors.unit?.[0]}
-              />
+            {/* Selling Units - right after category */}
+            <div className="border-t pt-4 mt-4">
+              <div className={`flex items-center justify-between mb-3 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                <h3 className="text-base font-semibold text-gray-900">{t.productManagement.sellingUnits}</h3>
+                <button
+                  type="button"
+                  onClick={addUnit}
+                  className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  <Plus className="w-4 h-4" />
+                  {t.productManagement.addUnit}
+                </button>
+              </div>
+              <div className="space-y-3">
+                {units.map((entry, index) => (
+                  <div
+                    key={index}
+                    className={`border rounded-lg p-4 space-y-3 ${entry.isDefault ? 'border-blue-300 bg-blue-50/50' : 'border-gray-200'}`}
+                  >
+                    <div className={`flex items-center justify-between ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          checked={entry.isDefault}
+                          onChange={() => updateUnit(index, 'isDefault', true)}
+                          className="text-blue-600"
+                        />
+                        <span className={entry.isDefault ? 'font-semibold text-blue-700' : 'text-gray-600'}>
+                          {t.productManagement.defaultUnit}
+                        </span>
+                      </label>
+                      {units.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeUnit(index)}
+                          className="text-red-500 hover:text-red-700 p-1"
+                          title={t.productManagement.removeUnit}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Unit Type */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.unitType}</label>
+                        <select
+                          value={entry.unit}
+                          onChange={(e) => updateUnit(index, 'unit', e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        >
+                          {UNIT_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Pieces per unit - shown only when unit is NOT PIECE */}
+                      {entry.unit !== 'PIECE' ? (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.piecesPerUnit}</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={entry.piecesPerUnit}
+                            onChange={(e) => updateUnit(index, 'piecesPerUnit', parseInt(e.target.value) || 1)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                      ) : <div />}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Unit Price */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.unitPrice}</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={entry.price || ''}
+                          onChange={(e) => updateUnit(index, 'price', parseFloat(e.target.value) || 0)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          required
+                        />
+                      </div>
+
+                      {/* Compare at Price per unit */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.unitCompareAtPrice}</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={entry.compareAtPrice ?? ''}
+                          onChange={(e) => updateUnit(index, 'compareAtPrice', e.target.value ? parseFloat(e.target.value) : null as unknown as number)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Label AR */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.unitLabel}</label>
+                        <input
+                          type="text"
+                          value={entry.label}
+                          onChange={(e) => updateUnit(index, 'label', e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          required
+                        />
+                      </div>
+
+                      {/* Label EN */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.unitLabelEn}</label>
+                        <input
+                          type="text"
+                          value={entry.labelEn}
+                          onChange={(e) => updateUnit(index, 'labelEn', e.target.value)}
+                          dir="ltr"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Stock & Min Order */}
@@ -168,22 +347,6 @@ export function NewProductForm({ categories }: Props) {
                 defaultValue="1"
                 required
                 error={fieldErrors.minOrderQuantity?.[0]}
-              />
-            </div>
-
-            {/* SKU & Barcode */}
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label={t.productManagement.sku}
-                name="sku"
-                dir="ltr"
-                error={fieldErrors.sku?.[0]}
-              />
-              <Input
-                label={t.productManagement.barcode}
-                name="barcode"
-                dir="ltr"
-                error={fieldErrors.barcode?.[0]}
               />
             </div>
 

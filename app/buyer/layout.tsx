@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { UserMenu } from '@/components/layout/UserMenu'
+import { CartRestorer } from '@/components/CartRestorer'
 import { Bell } from 'lucide-react'
 import Link from 'next/link'
 
@@ -22,6 +23,7 @@ export default async function BuyerLayout({
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      <CartRestorer />
       <Sidebar role="BUYER" />
       
       <div className="flex-1 flex flex-col">
