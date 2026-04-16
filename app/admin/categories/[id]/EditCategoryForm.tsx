@@ -1,14 +1,15 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, Trash2, Upload, X, ChevronDown } from 'lucide-react'
+import { ArrowRight, Trash2, Upload, X, ChevronDown, Languages, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { useLanguage } from '@/lib/LanguageContext'
 import { updateCategory, deleteCategory } from '@/actions/categories'
+import { useAutoTranslate } from '@/lib/useAutoTranslate'
 
 interface CategoryNode {
   id: string
@@ -75,6 +76,17 @@ export function EditCategoryForm({ category, categoryTree }: Props) {
   }, [category.parentId, filteredTree])
 
   const [selectedPath, setSelectedPath] = useState<string[]>(initialPath)
+
+  // Auto-translate refs & hook
+  const nameEnRef = useRef<HTMLInputElement>(null)
+  const nameArRef = useRef<HTMLInputElement>(null)
+  const translate = useAutoTranslate()
+
+  // Mark English name as touched if it already has a value from DB
+  useEffect(() => {
+    if (category.nameEn) translate.markTouched('nameEn')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function displayName(item: { name: string; nameEn: string | null }) {
     return lang === 'ar' ? item.name : (item.nameEn || item.name)
@@ -192,20 +204,38 @@ export function EditCategoryForm({ category, categoryTree }: Props) {
             <h2 className="text-lg font-semibold text-gray-900">{t.categoryManagement.editCategory}</h2>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Translation warning */}
+            {translate.warning && (
+              <div className={`flex items-center justify-between bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg text-sm ${dir === 'rtl' ? 'flex-row-reverse text-right' : ''}`}>
+                <span>{t.autoTranslate?.unavailable || 'الترجمة التلقائية غير متاحة حالياً بسبب مشكلة في الاتصال. يمكنك متابعة الإدخال يدوياً.'}</span>
+                <button type="button" onClick={translate.dismissWarning} className="text-yellow-600 hover:text-yellow-800 ms-2 font-bold">✕</button>
+              </div>
+            )}
+
             <Input 
+              ref={nameArRef}
               label={t.categoryManagement.categoryName} 
               name="name" 
               required 
               defaultValue={category.name} 
-              error={fieldErrors.name?.[0]} 
+              error={fieldErrors.name?.[0]}
+              onBlur={(e) => translate.handleBlur(e.target.value, nameEnRef, 'nameEn')}
             />
-            <Input 
-              label={t.categoryManagement.categoryNameEn} 
-              name="nameEn" 
-              dir="ltr" 
-              defaultValue={category.nameEn || ''} 
-              error={fieldErrors.nameEn?.[0]} 
-            />
+            <div className="relative">
+              <Input 
+                ref={nameEnRef}
+                label={t.categoryManagement.categoryNameEn} 
+                name="nameEn" 
+                dir="ltr" 
+                defaultValue={category.nameEn || ''} 
+                error={fieldErrors.nameEn?.[0]}
+                onInput={() => translate.markTouched('nameEn')}
+              />
+              <div className={`absolute top-0 ${dir === 'rtl' ? 'left-0' : 'right-0'} flex items-center gap-1`}>
+                {translate.translatingField === 'nameEn' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+                <button type="button" title={t.autoTranslate?.retryTranslate || 'ترجمة'} className="text-gray-400 hover:text-blue-600 p-1 transition-colors" onClick={() => translate.retry('nameEn', nameArRef.current?.value || '', nameEnRef)}><Languages className="w-4 h-4" /></button>
+              </div>
+            </div>
             <Input 
               label={t.categoryManagement.slug} 
               name="slug" 

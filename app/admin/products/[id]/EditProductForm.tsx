@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowRight, Trash2, Plus, X } from 'lucide-react'
+import { ArrowRight, Trash2, Plus, X, Languages, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { useLanguage } from '@/lib/LanguageContext'
 import { updateProduct, deleteProduct } from '@/actions/products'
+import { useAutoTranslate } from '@/lib/useAutoTranslate'
 
 interface UnitEntry {
   unit: string
@@ -121,6 +122,20 @@ export function EditProductForm({ product, categoryTree }: Props) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // Auto-translate refs & hook
+  const nameEnRef = useRef<HTMLInputElement>(null)
+  const descEnRef = useRef<HTMLTextAreaElement>(null)
+  const nameArRef = useRef<HTMLInputElement>(null)
+  const descArRef = useRef<HTMLTextAreaElement>(null)
+  const translate = useAutoTranslate()
+
+  // Mark English fields as touched if they already have values from the DB
+  useEffect(() => {
+    if (product.nameEn) translate.markTouched('nameEn')
+    if (product.descriptionEn) translate.markTouched('descriptionEn')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   // --- Cascading category helpers ---
   function findNodeInTree(nodes: CategoryNode[], id: string): CategoryNode | null {
     for (const node of nodes) {
@@ -283,10 +298,30 @@ export function EditProductForm({ product, categoryTree }: Props) {
               </div>
             )}
 
-            <Input label={t.productManagement.productName} name="name" required defaultValue={product.name} error={fieldErrors.name?.[0]} />
-            <Input label={t.productManagement.productNameEn} name="nameEn" dir="ltr" defaultValue={product.nameEn || ''} error={fieldErrors.nameEn?.[0]} />
-            <Textarea label={t.productManagement.description} name="description" defaultValue={product.description || ''} error={fieldErrors.description?.[0]} />
-            <Textarea label={t.productManagement.descriptionEn} name="descriptionEn" dir="ltr" defaultValue={product.descriptionEn || ''} error={fieldErrors.descriptionEn?.[0]} />
+            {/* Translation warning */}
+            {translate.warning && (
+              <div className={`flex items-center justify-between bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg text-sm ${dir === 'rtl' ? 'flex-row-reverse text-right' : ''}`}>
+                <span>{t.autoTranslate?.unavailable || 'الترجمة التلقائية غير متاحة حالياً بسبب مشكلة في الاتصال. يمكنك متابعة الإدخال يدوياً.'}</span>
+                <button type="button" onClick={translate.dismissWarning} className="text-yellow-600 hover:text-yellow-800 ms-2 font-bold">✕</button>
+              </div>
+            )}
+
+            <Input ref={nameArRef} label={t.productManagement.productName} name="name" required defaultValue={product.name} error={fieldErrors.name?.[0]} onBlur={(e) => translate.handleBlur(e.target.value, nameEnRef, 'nameEn')} />
+            <div className="relative">
+              <Input ref={nameEnRef} label={t.productManagement.productNameEn} name="nameEn" dir="ltr" defaultValue={product.nameEn || ''} error={fieldErrors.nameEn?.[0]} onInput={() => translate.markTouched('nameEn')} />
+              <div className={`absolute top-0 ${dir === 'rtl' ? 'left-0' : 'right-0'} flex items-center gap-1`}>
+                {translate.translatingField === 'nameEn' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+                <button type="button" title={t.autoTranslate?.retryTranslate || 'ترجمة'} className="text-gray-400 hover:text-blue-600 p-1 transition-colors" onClick={() => translate.retry('nameEn', nameArRef.current?.value || '', nameEnRef)}><Languages className="w-4 h-4" /></button>
+              </div>
+            </div>
+            <Textarea ref={descArRef} label={t.productManagement.description} name="description" defaultValue={product.description || ''} error={fieldErrors.description?.[0]} onBlur={(e) => translate.handleBlur(e.target.value, descEnRef, 'descriptionEn')} />
+            <div className="relative">
+              <Textarea ref={descEnRef} label={t.productManagement.descriptionEn} name="descriptionEn" dir="ltr" defaultValue={product.descriptionEn || ''} error={fieldErrors.descriptionEn?.[0]} onInput={() => translate.markTouched('descriptionEn')} />
+              <div className={`absolute top-0 ${dir === 'rtl' ? 'left-0' : 'right-0'} flex items-center gap-1`}>
+                {translate.translatingField === 'descriptionEn' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+                <button type="button" title={t.autoTranslate?.retryTranslate || 'ترجمة'} className="text-gray-400 hover:text-blue-600 p-1 transition-colors" onClick={() => translate.retry('descriptionEn', descArRef.current?.value || '', descEnRef)}><Languages className="w-4 h-4" /></button>
+              </div>
+            </div>
 
             {/* Category - Cascading selector */}
             <div>

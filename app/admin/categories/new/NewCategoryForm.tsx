@@ -1,14 +1,15 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, Upload, ChevronDown } from 'lucide-react'
+import { ArrowRight, Upload, ChevronDown, Languages, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { useLanguage } from '@/lib/LanguageContext'
 import { createCategory } from '@/actions/categories'
+import { useAutoTranslate } from '@/lib/useAutoTranslate'
 
 interface CategoryNode {
   id: string
@@ -34,6 +35,10 @@ export function NewCategoryForm({ categoryTree }: Props) {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   // Cascading parent selection: each level stores the selected category id
   const [selectedPath, setSelectedPath] = useState<string[]>([])
+
+  // Auto-translate refs & hook
+  const nameEnRef = useRef<HTMLInputElement>(null)
+  const translate = useAutoTranslate()
 
   function displayName(item: { name: string; nameEn: string | null }) {
     return lang === 'ar' ? item.name : (item.nameEn || item.name)
@@ -146,20 +151,37 @@ export function NewCategoryForm({ categoryTree }: Props) {
             </h2>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Translation warning */}
+            {translate.warning && (
+              <div className={`flex items-center justify-between bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg text-sm ${dir === 'rtl' ? 'flex-row-reverse text-right' : ''}`}>
+                <span>{t.autoTranslate?.unavailable || 'الترجمة التلقائية غير متاحة حالياً بسبب مشكلة في الاتصال. يمكنك متابعة الإدخال يدوياً.'}</span>
+                <button type="button" onClick={translate.dismissWarning} className="text-yellow-600 hover:text-yellow-800 ms-2 font-bold">✕</button>
+              </div>
+            )}
+
             <Input
               label={t.categoryManagement.categoryName}
               name="name"
               required
               value={nameAr}
               onChange={(e) => setNameAr(e.target.value)}
+              onBlur={(e) => translate.handleBlur(e.target.value, nameEnRef, 'nameEn')}
               error={fieldErrors.name?.[0]}
             />
-            <Input
-              label={t.categoryManagement.categoryNameEn}
-              name="nameEn"
-              dir="ltr"
-              error={fieldErrors.nameEn?.[0]}
-            />
+            <div className="relative">
+              <Input
+                ref={nameEnRef}
+                label={t.categoryManagement.categoryNameEn}
+                name="nameEn"
+                dir="ltr"
+                error={fieldErrors.nameEn?.[0]}
+                onInput={() => translate.markTouched('nameEn')}
+              />
+              <div className={`absolute top-0 ${dir === 'rtl' ? 'left-0' : 'right-0'} flex items-center gap-1`}>
+                {translate.translatingField === 'nameEn' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+                <button type="button" title={t.autoTranslate?.retryTranslate || 'ترجمة'} className="text-gray-400 hover:text-blue-600 p-1 transition-colors" onClick={() => translate.retry('nameEn', nameAr, nameEnRef)}><Languages className="w-4 h-4" /></button>
+              </div>
+            </div>
             <Input
               label={t.categoryManagement.slug}
               name="slug"

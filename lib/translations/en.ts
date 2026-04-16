@@ -531,6 +531,12 @@ export const en: TranslationKeys = {
     totalCategories: 'Total Categories',
   },
 
+  autoTranslate: {
+    unavailable: 'Auto-translation is currently unavailable due to a connection issue. You can continue entering data manually.',
+    retryTranslate: 'Translate',
+    translating: 'Translating...',
+  },
+
   productManagement: {
     title: 'Product Management',
     addProduct: 'Add Product',

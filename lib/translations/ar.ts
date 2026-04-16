@@ -521,6 +521,12 @@ export const ar = {
     totalCategories: 'إجمالي الأصناف',
   },
 
+  autoTranslate: {
+    unavailable: 'الترجمة التلقائية غير متاحة حالياً بسبب مشكلة في الاتصال. يمكنك متابعة الإدخال يدوياً.',
+    retryTranslate: 'ترجمة',
+    translating: 'جاري الترجمة...',
+  },
+
   productManagement: {
     title: 'إدارة المنتجات',
     addProduct: 'إضافة منتج',
