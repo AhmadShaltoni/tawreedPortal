@@ -8,7 +8,7 @@ export async function OPTIONS() {
   return corsOptions()
 }
 
-// GET /api/v1/orders - Get buyer's orders
+// GET /api/v1/orders - Get buyer's orders with full details
 export async function GET(request: NextRequest) {
   const { user, error } = await authenticateApiRequest(request)
   if (!user) return apiError(error ?? 'Unauthorized', 401)
@@ -35,7 +35,11 @@ export async function GET(request: NextRequest) {
   ])
 
   return apiResponse({
-    orders,
+    orders: orders.map(order => ({
+      ...order,
+      buyerNotes: order.buyerNotes,
+      statusHistory: order.statusHistory,
+    })),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   })
 }
@@ -77,12 +81,58 @@ export async function POST(request: NextRequest) {
     return sum + unitPrice * item.quantity
   }, 0)
 
+  // Validate coupon code if provided
+  let discountCode: any = null
+  let discountAmount = 0
+  let finalPrice = totalPrice
+
+  if (validated.data.couponCode) {
+    const couponCodeStr = validated.data.couponCode.toUpperCase()
+
+    discountCode = await db.discountCode.findFirst({
+      where: { code: { equals: couponCodeStr, mode: 'insensitive' } },
+      include: { _count: { select: { usages: true } } },
+    })
+
+    if (!discountCode) {
+      return apiError('كود الخصم غير موجود', 400)
+    }
+    if (!discountCode.isActive) {
+      return apiError('كود الخصم غير مفعل', 400)
+    }
+
+    const now = new Date()
+    if (discountCode.startDate && now < discountCode.startDate) {
+      return apiError('كود الخصم لم يبدأ بعد', 400)
+    }
+    if (discountCode.endDate && now > discountCode.endDate) {
+      return apiError('كود الخصم منتهي الصلاحية', 400)
+    }
+    if (discountCode.maxUsage !== null && discountCode._count.usages >= discountCode.maxUsage) {
+      return apiError('تم الوصول للحد الأقصى لاستخدام هذا الكود', 400)
+    }
+    if (discountCode.isSingleUse) {
+      const existingUsage = await db.discountCodeUsage.findFirst({
+        where: { discountCodeId: discountCode.id, userId: user.id },
+      })
+      if (existingUsage) {
+        return apiError('لقد استخدمت هذا الكود من قبل', 400)
+      }
+    }
+    if (discountCode.minOrderAmount !== null && totalPrice < discountCode.minOrderAmount) {
+      return apiError(`قيمة الطلب أقل من الحد الأدنى المطلوب (${discountCode.minOrderAmount} د.أ)`, 400)
+    }
+
+    discountAmount = Math.round((totalPrice * discountCode.discountPercent / 100) * 100) / 100
+    finalPrice = Math.round((totalPrice - discountAmount) * 100) / 100
+  }
+
   // Create order in transaction
   const order = await db.$transaction(async (tx) => {
     // Create order
     const newOrder = await tx.order.create({
       data: {
-        totalPrice,
+        totalPrice: finalPrice,
         deliveryAddress: validated.data.deliveryAddress,
         deliveryCity: validated.data.deliveryCity,
         buyerNotes: validated.data.buyerNotes,
@@ -128,6 +178,19 @@ export async function POST(request: NextRequest) {
     // Clear cart
     await tx.cartItem.deleteMany({ where: { buyerId: user.id } })
 
+    // Record coupon usage if coupon was applied
+    if (discountCode) {
+      await tx.discountCodeUsage.create({
+        data: {
+          discountCodeId: discountCode.id,
+          userId: user.id,
+          orderId: newOrder.id,
+          discountAmount,
+          orderTotal: totalPrice,
+        },
+      })
+    }
+
     // Notify admins
     const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } })
     if (admins.length > 0) {
@@ -145,5 +208,16 @@ export async function POST(request: NextRequest) {
     return newOrder
   })
 
-  return apiResponse({ order }, 201)
+  return apiResponse({
+    order,
+    ...(discountCode ? {
+      coupon: {
+        code: discountCode.code,
+        discountPercent: discountCode.discountPercent,
+        discountAmount,
+        originalTotal: totalPrice,
+        finalTotal: finalPrice,
+      },
+    } : {}),
+  }, 201)
 }

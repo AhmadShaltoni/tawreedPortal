@@ -7,16 +7,38 @@ export async function OPTIONS() {
   return corsOptions()
 }
 
-// GET /api/v1/products?categoryId=xxx&search=xxx&page=1&limit=20
+// GET /api/v1/products?categoryId=xxx&search=xxx&page=1&limit=20&includeDescendants=true
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const categoryId = searchParams.get('categoryId')
   const search = searchParams.get('search')
+  const includeDescendants = searchParams.get('includeDescendants') === 'true'
   const page = Number(searchParams.get('page')) || 1
   const limit = Math.min(Number(searchParams.get('limit')) || 20, 100)
 
-  const where: Record<string, unknown> = { isActive: true }
-  if (categoryId) where.categoryId = categoryId
+  const where: Record<string, unknown> = { isActive: true, stock: { gt: 0 } }
+
+  if (categoryId) {
+    if (includeDescendants) {
+      // Find all descendant category IDs using materialized path
+      const category = await db.category.findUnique({
+        where: { id: categoryId },
+        select: { path: true },
+      })
+      if (category?.path) {
+        const descendants = await db.category.findMany({
+          where: { path: { startsWith: category.path + '/' } },
+          select: { id: true },
+        })
+        const allIds = [categoryId, ...descendants.map(d => d.id)]
+        where.categoryId = { in: allIds }
+      } else {
+        where.categoryId = categoryId
+      }
+    } else {
+      where.categoryId = categoryId
+    }
+  }
   if (search) {
     where.OR = [
       { name: { contains: search, mode: 'insensitive' } },

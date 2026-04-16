@@ -138,6 +138,7 @@ model User {
   notifications Notification[]
   cartItems     CartItem[]
   deviceTokens  DeviceToken[]   // Multiple devices per user
+  discountCodeUsages DiscountCodeUsage[]
   
   @@index([role])
   @@index([city])
@@ -289,7 +290,7 @@ model OrderItem {
   productImage  String?
   
   // Unit snapshot (captures which unit was selected at order time)
-  unitLabel     String?    // e.g., "كرتونة (36 قطعة)"
+  unitLabel     String?    // e.g., "كرتونةة (36 قطعة)"
   unitLabelEn   String?    // e.g., "Carton (36 pieces)"
   piecesPerUnit Int       @default(1) // How many pieces in the selected unit
   
@@ -312,7 +313,7 @@ model OrderItem {
 // E-COMMERCE MODELS
 // ============================================
 
-// Product category (flexible, admin-managed)
+// Product category (flexible, admin-managed, hierarchical)
 model Category {
   id          String    @id @default(cuid())
   name        String    // Arabic name
@@ -322,6 +323,13 @@ model Category {
   sortOrder   Int       @default(0)
   isActive    Boolean   @default(true)
   
+  // Hierarchy fields
+  parentId    String?   // Self-referencing FK for nested categories
+  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  depth       Int       @default(0)  // Cached depth level (root=0)
+  path        String    @default("") // Materialized path for efficient descendant queries
+  
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   
@@ -330,6 +338,8 @@ model Category {
   
   @@index([sortOrder])
   @@index([isActive])
+  @@index([parentId])
+  @@index([path])
 }
 
 // Product in the catalog
@@ -383,7 +393,7 @@ model ProductUnit {
   id              String    @id @default(cuid())
   
   unit            Unit      // PIECE, DOZEN, CARTON, BOX, etc.
-  label           String    // Arabic label: "قطعة", "درزن", "كرتونة"
+  label           String    // Arabic label: "قطعة", "دزينة", "كرتونةة"
   labelEn         String?   // English label: "Piece", "Dozen", "Carton"
   piecesPerUnit   Int       @default(1)  // 1 for piece, 12 for dozen, 36 for carton
   price           Float     // Price for this unit (JOD)
@@ -538,4 +548,61 @@ model Area {
 
   @@index([cityId])
   @@index([sortOrder])
+}
+
+// ============================================
+// DISCOUNT CODE (COUPON) MODELS
+// ============================================
+
+// Discount codes managed by admin
+model DiscountCode {
+  id              String    @id @default(cuid())
+  
+  // Core fields
+  code            String    @unique  // Stored uppercase (e.g. ISTKLAL2026, SBA)
+  discountPercent Float              // Percentage (e.g. 15 = 15%)
+  
+  // Usage rules
+  isSingleUse     Boolean   @default(false)  // Each user can use only once
+  maxUsage        Int?               // Max total uses across all users (null = unlimited)
+  minOrderAmount  Float?             // Min order total for code to be valid (JOD)
+  
+  // Date range
+  startDate       DateTime?          // When code becomes active (null = immediately)
+  endDate         DateTime?          // When code expires (null = no expiry)
+  
+  // Status
+  isActive        Boolean   @default(true)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  usages          DiscountCodeUsage[]
+  
+  @@index([code])
+  @@index([isActive])
+}
+
+// Tracks each use of a discount code
+model DiscountCodeUsage {
+  id              String    @id @default(cuid())
+  
+  discountAmount  Float              // Actual JOD saved
+  orderTotal      Float              // Order total before discount
+  
+  createdAt       DateTime  @default(now())
+  
+  // Relations
+  discountCodeId  String
+  discountCode    DiscountCode @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
+  
+  userId          String
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  orderId         String?            // Linked after order is placed
+  
+  @@index([discountCodeId])
+  @@index([userId])
+  @@index([discountCodeId, userId])
 }

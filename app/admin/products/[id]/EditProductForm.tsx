@@ -35,6 +35,14 @@ interface ProductUnitData {
   sortOrder: number
 }
 
+interface CategoryNode {
+  id: string
+  name: string
+  nameEn: string | null
+  _count: { products: number; children: number }
+  children: CategoryNode[]
+}
+
 interface Props {
   product: {
     id: string
@@ -54,13 +62,13 @@ interface Props {
     isActive: boolean
     units?: ProductUnitData[]
   }
-  categories: Array<{ id: string; name: string; nameEn: string | null; slug: string }>
+  categoryTree: CategoryNode[]
 }
 
 const UNIT_OPTIONS = [
   { value: 'PIECE', label: 'حبة' },
-  { value: 'DOZEN', label: 'درزن' },
-  { value: 'CARTON', label: 'كرتون' },
+  { value: 'DOZEN', label: 'دزينة' },
+  { value: 'CARTON', label: 'كرتونة' },
   { value: 'BOX', label: 'صندوق' },
   { value: 'PACK', label: 'عبوة' },
   { value: 'KG', label: 'كيلو' },
@@ -71,7 +79,7 @@ const UNIT_OPTIONS = [
 
 const UNIT_LABEL_MAP: Record<string, { ar: string; en: string; defaultPieces: number }> = {
   PIECE:  { ar: 'قطعة', en: 'Piece', defaultPieces: 1 },
-  DOZEN:  { ar: 'درزن', en: 'Dozen', defaultPieces: 12 },
+  DOZEN:  { ar: 'دزينة', en: 'Dozen', defaultPieces: 12 },
   CARTON: { ar: 'كرتونة', en: 'Carton', defaultPieces: 1 },
   BOX:    { ar: 'صندوق', en: 'Box', defaultPieces: 1 },
   PACK:   { ar: 'عبوة', en: 'Pack', defaultPieces: 1 },
@@ -106,17 +114,41 @@ function buildInitialUnits(product: Props['product']): UnitEntry[] {
   }]
 }
 
-export function EditProductForm({ product, categories }: Props) {
+export function EditProductForm({ product, categoryTree }: Props) {
   const { t, dir, lang } = useLanguage()
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  // --- Cascading category helpers ---
+  function findNodeInTree(nodes: CategoryNode[], id: string): CategoryNode | null {
+    for (const node of nodes) {
+      if (node.id === id) return node
+      const found = findNodeInTree(node.children, id)
+      if (found) return found
+    }
+    return null
+  }
+
+  function buildPathToNode(nodes: CategoryNode[], targetId: string, currentPath: string[] = []): string[] | null {
+    for (const node of nodes) {
+      if (node.id === targetId) return [...currentPath, node.id]
+      if (node.children.length > 0) {
+        const found = buildPathToNode(node.children, targetId, [...currentPath, node.id])
+        if (found) return found
+      }
+    }
+    return null
+  }
+
+  const [selectedPath, setSelectedPath] = useState<string[]>(() => {
+    return buildPathToNode(categoryTree, product.categoryId) || []
+  })
   const [units, setUnits] = useState<UnitEntry[]>(buildInitialUnits(product))
 
   function addUnit() {
-    setUnits([...units, { unit: 'DOZEN', label: 'درزن', labelEn: 'Dozen', piecesPerUnit: 12, price: 0, compareAtPrice: null, isDefault: false }])
+    setUnits([...units, { unit: 'DOZEN', label: 'دزينة', labelEn: 'Dozen', piecesPerUnit: 12, price: 0, compareAtPrice: null, isDefault: false }])
   }
 
   function removeUnit(index: number) {
@@ -189,10 +221,34 @@ export function EditProductForm({ product, categories }: Props) {
     }
   }
 
-  const categoryOptions = categories.map((c) => ({
-    value: c.id,
-    label: lang === 'ar' ? c.name : (c.nameEn || c.name),
-  }))
+  function getChildrenAtLevel(level: number): CategoryNode[] {
+    if (level === 0) return categoryTree
+    const parentId = selectedPath[level - 1]
+    if (!parentId) return []
+    const parent = findNodeInTree(categoryTree, parentId)
+    return parent?.children || []
+  }
+
+  function getDropdownCount(): number {
+    let count = 1
+    for (let i = 0; i < selectedPath.length; i++) {
+      const node = findNodeInTree(categoryTree, selectedPath[i])
+      if (node && node.children.length > 0) {
+        count++
+      } else {
+        break
+      }
+    }
+    return count
+  }
+
+  function handleLevelChange(level: number, categoryId: string) {
+    const newPath = selectedPath.slice(0, level)
+    if (categoryId) newPath.push(categoryId)
+    setSelectedPath(newPath)
+  }
+
+  const finalCategoryId = selectedPath.length > 0 ? selectedPath[selectedPath.length - 1] : ''
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -232,8 +288,33 @@ export function EditProductForm({ product, categories }: Props) {
             <Textarea label={t.productManagement.description} name="description" defaultValue={product.description || ''} error={fieldErrors.description?.[0]} />
             <Textarea label={t.productManagement.descriptionEn} name="descriptionEn" dir="ltr" defaultValue={product.descriptionEn || ''} error={fieldErrors.descriptionEn?.[0]} />
 
-            {/* Category */}
-            <Select label={t.productManagement.category} name="categoryId" options={categoryOptions} required defaultValue={product.categoryId} error={fieldErrors.categoryId?.[0]} />
+            {/* Category - Cascading selector */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t.productManagement.category}</label>
+              <div className="space-y-2">
+                {Array.from({ length: getDropdownCount() }, (_, level) => {
+                  const options = getChildrenAtLevel(level)
+                  if (options.length === 0) return null
+                  return (
+                    <select
+                      key={level}
+                      value={selectedPath[level] || ''}
+                      onChange={(e) => handleLevelChange(level, e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    >
+                      <option value="">— {t.productManagement.selectCategory || 'اختر صنف'} —</option>
+                      {options.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {lang === 'ar' ? cat.name : (cat.nameEn || cat.name)}
+                        </option>
+                      ))}
+                    </select>
+                  )
+                })}
+              </div>
+              <input type="hidden" name="categoryId" value={finalCategoryId} />
+              {fieldErrors.categoryId && <p className="text-sm text-red-600 mt-1">{fieldErrors.categoryId[0]}</p>}
+            </div>
 
             {/* Selling Units - right after category */}
             <div className="border-t pt-4 mt-4">

@@ -1,7 +1,7 @@
-import { getCategories } from '@/actions/categories'
+import { getCategoryTree } from '@/actions/categories'
 import { NewProductForm } from './NewProductForm'
 
 export default async function NewProductPage() {
-  const categories = await getCategories()
-  return <NewProductForm categories={categories} />
+  const categoryTree = await getCategoryTree()
+  return <NewProductForm categoryTree={categoryTree} />
 }

@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { getCategoryById } from '@/actions/categories'
+import { getCategoryById, getCategoryTree } from '@/actions/categories'
 import { EditCategoryForm } from './EditCategoryForm'
 
 export default async function EditCategoryPage({
@@ -8,8 +8,11 @@ export default async function EditCategoryPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const category = await getCategoryById(id)
+  const [category, categoryTree] = await Promise.all([
+    getCategoryById(id),
+    getCategoryTree(true),
+  ])
   if (!category) notFound()
 
-  return <EditCategoryForm category={category} />
+  return <EditCategoryForm category={category} categoryTree={categoryTree} />
 }

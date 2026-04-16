@@ -3,14 +3,22 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { Plus, Search } from 'lucide-react'
-import { useState } from 'react'
+import { Plus, Search, GripVertical, Trash2, X } from 'lucide-react'
+import { useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { useLanguage } from '@/lib/LanguageContext'
 import { formatCurrency } from '@/lib/utils'
-import { toggleProductActive } from '@/actions/products'
+import { toggleProductActive, deleteProduct, reorderProducts } from '@/actions/products'
+
+interface CategoryNode {
+  id: string
+  name: string
+  nameEn: string | null
+  _count: { products: number; children: number }
+  children: CategoryNode[]
+}
 
 interface Props {
   products: Array<{
@@ -21,9 +29,11 @@ interface Props {
     stock: number
     image: string | null
     isActive: boolean
+    sortOrder: number
     category: { id: string; name: string; nameEn: string | null }
   }>
   categories: Array<{ id: string; name: string; nameEn: string | null; slug: string }>
+  categoryTree: CategoryNode[]
   total: number
   pages: number
   currentPage: number
@@ -31,9 +41,23 @@ interface Props {
   currentSearch?: string
 }
 
+function flattenCategoryTree(nodes: CategoryNode[], lang: string, prefix = ''): { value: string; label: string }[] {
+  const result: { value: string; label: string }[] = []
+  for (const node of nodes) {
+    const displayLabel = lang === 'ar' ? node.name : (node.nameEn || node.name)
+    const fullLabel = prefix ? `${prefix} > ${displayLabel}` : displayLabel
+    result.push({ value: node.id, label: fullLabel })
+    if (node.children.length > 0) {
+      result.push(...flattenCategoryTree(node.children, lang, fullLabel))
+    }
+  }
+  return result
+}
+
 export function ProductListClient({
   products,
   categories,
+  categoryTree,
   total,
   pages,
   currentPage,
@@ -43,6 +67,22 @@ export function ProductListClient({
   const { t, dir, lang } = useLanguage()
   const router = useRouter()
   const [search, setSearch] = useState(currentSearch || '')
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [orderedProducts, setOrderedProducts] = useState(products)
+  const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const dragCounter = useRef<Record<string, number>>({})
+
+  // Sync when products prop changes (e.g. after server refresh)
+  if (products !== orderedProducts && !draggedId) {
+    const productIds = products.map(p => p.id).join(',')
+    const orderedIds = orderedProducts.map(p => p.id).join(',')
+    if (productIds !== orderedIds || products.length !== orderedProducts.length) {
+      setOrderedProducts(products)
+    }
+  }
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -62,6 +102,81 @@ export function ProductListClient({
   async function handleToggleActive(id: string) {
     await toggleProductActive(id)
   }
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    await deleteProduct(deleteTarget.id)
+    setDeleteTarget(null)
+    setDeleting(false)
+    router.refresh()
+  }
+
+  const handleDragStart = useCallback((e: React.DragEvent<HTMLTableRowElement>, id: string) => {
+    setDraggedId(id)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)
+    // Make the drag image slightly transparent
+    if (e.currentTarget) {
+      e.currentTarget.style.opacity = '0.5'
+    }
+  }, [])
+
+  const handleDragEnd = useCallback((e: React.DragEvent<HTMLTableRowElement>) => {
+    e.currentTarget.style.opacity = '1'
+    setDraggedId(null)
+    setDragOverId(null)
+    dragCounter.current = {}
+  }, [])
+
+  const handleDragEnter = useCallback((e: React.DragEvent<HTMLTableRowElement>, id: string) => {
+    e.preventDefault()
+    dragCounter.current[id] = (dragCounter.current[id] || 0) + 1
+    setDragOverId(id)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLTableRowElement>, id: string) => {
+    dragCounter.current[id] = (dragCounter.current[id] || 0) - 1
+    if (dragCounter.current[id] <= 0) {
+      dragCounter.current[id] = 0
+      setDragOverId((prev) => (prev === id ? null : prev))
+    }
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLTableRowElement>) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const handleDrop = useCallback(async (e: React.DragEvent<HTMLTableRowElement>, targetId: string) => {
+    e.preventDefault()
+    const sourceId = e.dataTransfer.getData('text/plain')
+    if (!sourceId || sourceId === targetId) {
+      setDraggedId(null)
+      setDragOverId(null)
+      dragCounter.current = {}
+      return
+    }
+
+    // Reorder locally
+    const newOrder = [...orderedProducts]
+    const sourceIndex = newOrder.findIndex(p => p.id === sourceId)
+    const targetIndex = newOrder.findIndex(p => p.id === targetId)
+    if (sourceIndex === -1 || targetIndex === -1) return
+
+    const [moved] = newOrder.splice(sourceIndex, 1)
+    newOrder.splice(targetIndex, 0, moved)
+    setOrderedProducts(newOrder)
+    setDraggedId(null)
+    setDragOverId(null)
+    dragCounter.current = {}
+
+    // Save to server
+    setSaving(true)
+    await reorderProducts(newOrder.map(p => p.id))
+    setSaving(false)
+    router.refresh()
+  }, [orderedProducts, router])
 
   return (
     <div className="space-y-6">
@@ -94,16 +209,16 @@ export function ProductListClient({
               </div>
             </form>
 
-            {/* Category filter */}
+            {/* Category filter - hierarchical */}
             <select
               value={currentCategory || ''}
               onChange={(e) => handleCategoryFilter(e.target.value)}
               className="border border-gray-300 rounded-lg py-2 px-3 min-w-[200px]"
             >
               <option value="">{t.productManagement.allCategories}</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {lang === 'ar' ? cat.name : (cat.nameEn || cat.name)}
+              {flattenCategoryTree(categoryTree, lang).map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
                 </option>
               ))}
             </select>
@@ -119,9 +234,15 @@ export function ProductListClient({
           ) : (
             <>
               <div className="overflow-x-auto">
+                {saving && (
+                  <div className={`text-xs text-blue-600 mb-2 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
+                    {t.common.loading}
+                  </div>
+                )}
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200">
+                      <th className={`pb-3 font-medium text-gray-500 w-10 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}></th>
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.productManagement.image}</th>
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.productManagement.productName}</th>
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.productManagement.category}</th>
@@ -132,8 +253,31 @@ export function ProductListClient({
                     </tr>
                   </thead>
                   <tbody>
-                    {products.map((product) => (
-                      <tr key={product.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    {orderedProducts.map((product) => (
+                      <tr
+                        key={product.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, product.id)}
+                        onDragEnd={handleDragEnd}
+                        onDragEnter={(e) => handleDragEnter(e, product.id)}
+                        onDragLeave={(e) => handleDragLeave(e, product.id)}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, product.id)}
+                        className={`border-b border-gray-100 transition-colors ${
+                          draggedId === product.id
+                            ? 'opacity-50'
+                            : dragOverId === product.id && draggedId
+                              ? 'bg-blue-50 border-t-2 border-t-blue-400'
+                              : product.stock <= 0
+                                ? 'bg-red-50 hover:bg-red-100'
+                                : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <td className="py-3">
+                          <div className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 flex justify-center">
+                            <GripVertical className="w-5 h-5" />
+                          </div>
+                        </td>
                         <td className="py-3">
                           <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                             {product.image ? (
@@ -176,6 +320,16 @@ export function ProductListClient({
                             >
                               {product.isActive ? t.productManagement.inactive : t.productManagement.active}
                             </Button>
+                            <button
+                              onClick={() => setDeleteTarget({
+                                id: product.id,
+                                name: lang === 'ar' ? product.name : (product.nameEn || product.name),
+                              })}
+                              className="p-1.5 rounded text-red-500 hover:bg-red-50 hover:text-red-700 transition-colors"
+                              title={t.common.delete}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -206,6 +360,43 @@ export function ProductListClient({
           )}
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setDeleteTarget(null)}>
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4"
+            onClick={(e) => e.stopPropagation()}
+            dir={dir}
+          >
+            <div className={`flex items-center justify-between mb-4 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+              <h3 className="text-lg font-semibold text-gray-900">{t.common.delete}</h3>
+              <button onClick={() => setDeleteTarget(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-gray-600 mb-2">{t.productManagement.confirmDelete}</p>
+            <p className="text-gray-900 font-medium mb-6">{deleteTarget.name}</p>
+            <div className={`flex gap-3 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+              <Button
+                variant="outline"
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1"
+              >
+                {t.common.cancel}
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1"
+              >
+                {deleting ? t.common.loading : t.common.delete}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

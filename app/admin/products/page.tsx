@@ -1,5 +1,5 @@
 import { getProducts } from '@/actions/products'
-import { getCategories } from '@/actions/categories'
+import { getCategories, getCategoryTree } from '@/actions/categories'
 import { ProductListClient } from './ProductListClient'
 
 export default async function AdminProductsPage({
@@ -12,15 +12,17 @@ export default async function AdminProductsPage({
   const search = params.search
   const page = Number(params.page) || 1
 
-  const [{ products, total, pages }, categories] = await Promise.all([
-    getProducts({ categoryId, search, page }),
+  const [{ products, total, pages }, categories, categoryTree] = await Promise.all([
+    getProducts({ categoryId, search, page, includeDescendants: true }),
     getCategories(true),
+    getCategoryTree(true),
   ])
 
   return (
     <ProductListClient
       products={products}
       categories={categories}
+      categoryTree={categoryTree}
       total={total}
       pages={pages}
       currentPage={page}

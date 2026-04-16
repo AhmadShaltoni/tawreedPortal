@@ -75,7 +75,7 @@ export async function getUsers(options?: {
         isActive: true,
         isVerified: true,
         createdAt: true,
-        _count: { select: { buyerOrders: true } },
+        _count: { select: { buyerOrders: true, supplierOrders: true } },
       },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
@@ -118,7 +118,7 @@ export async function getUserById(id: string) {
       isActive: true,
       isVerified: true,
       createdAt: true,
-      _count: { select: { buyerOrders: true } },
+      _count: { select: { buyerOrders: true, supplierOrders: true } },
     },
   })
 }

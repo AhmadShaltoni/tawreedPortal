@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { getProductById } from '@/actions/products'
-import { getCategories } from '@/actions/categories'
+import { getCategoryTree } from '@/actions/categories'
 import { EditProductForm } from './EditProductForm'
 
 export default async function EditProductPage({
@@ -9,12 +9,12 @@ export default async function EditProductPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [product, categories] = await Promise.all([
+  const [product, categoryTree] = await Promise.all([
     getProductById(id),
-    getCategories(true),
+    getCategoryTree(true),
   ])
 
   if (!product) notFound()
 
-  return <EditProductForm product={product} categories={categories} />
+  return <EditProductForm product={product} categoryTree={categoryTree} />
 }

@@ -5,6 +5,7 @@ import { requireRole } from '@/lib/auth'
 import { createProductSchema, updateProductSchema, productUnitSchema } from '@/lib/validations'
 import { saveProductImage, deleteProductImage } from '@/lib/upload'
 import type { ActionResponse } from '@/types'
+import type { Unit } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 export async function createProduct(formData: FormData): Promise<ActionResponse<{ id: string }>> {
@@ -32,6 +33,11 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
     return { success: false, errors: validated.error.flatten().fieldErrors }
   }
 
+  // Prevent adding product with 0 stock
+  if (validated.data.stock <= 0) {
+    return { success: false, error: 'لا يمكن إضافة منتج بمخزون 0' }
+  }
+
   // Handle image upload
   let imagePath: string | undefined
   const imageFile = formData.get('image')
@@ -48,7 +54,7 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
   console.log('[createProduct] Raw units from formData:', typeof unitsJson, unitsJson ? String(unitsJson).substring(0, 200) : 'NULL')
   
   const validatedUnits: Array<{
-    unit: string
+    unit: Unit
     label: string
     labelEn?: string
     piecesPerUnit: number
@@ -68,6 +74,7 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
           if (unitResult.success) {
             validatedUnits.push({
               ...unitResult.data,
+              unit: unitResult.data.unit as Unit,
               isDefault: unitResult.data.isDefault ?? false,
               sortOrder: unitResult.data.sortOrder ?? i,
             })
@@ -166,7 +173,7 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
   console.log('[updateProduct] Raw units from formData:', typeof unitsJson, unitsJson ? String(unitsJson).substring(0, 200) : 'NULL')
   
   const validatedUnits: Array<{
-    unit: string
+    unit: Unit
     label: string
     labelEn?: string
     piecesPerUnit: number
@@ -186,6 +193,7 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
           if (unitResult.success) {
             validatedUnits.push({
               ...unitResult.data,
+              unit: unitResult.data.unit as Unit,
               isDefault: unitResult.data.isDefault ?? false,
               sortOrder: unitResult.data.sortOrder ?? i,
             })
@@ -264,17 +272,46 @@ export async function toggleProductActive(id: string): Promise<ActionResponse> {
   return { success: true }
 }
 
+export async function reorderProducts(orderedIds: string[]): Promise<ActionResponse> {
+  const { authorized, error } = await requireRole(['ADMIN'])
+  if (!authorized) return { success: false, error: error ?? 'Not authorized' }
+
+  if (!orderedIds.length) return { success: false, error: 'No products to reorder' }
+
+  await db.$transaction(
+    orderedIds.map((id, index) =>
+      db.product.update({
+        where: { id },
+        data: { sortOrder: index },
+      })
+    )
+  )
+
+  revalidatePath('/admin/products')
+  return { success: true }
+}
+
 export async function getProducts(options?: {
   categoryId?: string
   search?: string
   isActive?: boolean
   page?: number
   limit?: number
+  includeDescendants?: boolean
 }) {
   const { categoryId, search, isActive, page = 1, limit = 20 } = options ?? {}
 
   const where: Record<string, unknown> = {}
-  if (categoryId) where.categoryId = categoryId
+  if (categoryId) {
+    if (options?.includeDescendants) {
+      // Get all descendant category IDs
+      const { getCategoryDescendantIds } = await import('@/actions/categories')
+      const descendantIds = await getCategoryDescendantIds(categoryId)
+      where.categoryId = { in: [categoryId, ...descendantIds] }
+    } else {
+      where.categoryId = categoryId
+    }
+  }
   if (isActive !== undefined) where.isActive = isActive
   if (search) {
     where.OR = [

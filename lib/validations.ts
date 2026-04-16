@@ -108,7 +108,8 @@ export const createProductSchema = z.object({
   unit: z.enum(['KG', 'GRAM', 'LITER', 'PIECE', 'PACK', 'BOX', 'CARTON', 'DOZEN', 'PALLET']),
   sku: z.string().optional(),
   barcode: z.string().optional(),
-  stock: z.coerce.number().int().min(0, 'Stock cannot be negative'),
+  stock: z.coerce.number().int().positive('المخزون يجب أن يكون أكبر من صفر'),
+
   minOrderQuantity: z.coerce.number().int().positive('Minimum order must be at least 1'),
   isActive: z.coerce.boolean().optional(),
 })
@@ -122,6 +123,7 @@ export const createCategorySchema = z.object({
   slug: z.string()
     .min(2, 'Slug is required')
     .regex(/^[a-z0-9-]+$/, 'Slug must contain only lowercase letters, numbers, and hyphens'),
+  parentId: z.string().optional(),
   sortOrder: z.coerce.number().int().optional(),
   isActive: z.coerce.boolean().optional(),
 })
@@ -162,6 +164,46 @@ export const createOrderFromCartSchema = z.object({
   deliveryAddress: z.string().min(5, 'Delivery address is required'),
   deliveryCity: z.string().min(2, 'City is required'),
   buyerNotes: z.string().optional(),
+  couponCode: z.string().optional(),
+})
+
+// Buyer order update validation (only for PENDING orders)
+export const updateBuyerOrderSchema = z.object({
+  deliveryAddress: z.string().min(5, 'Delivery address is required').optional(),
+  deliveryCity: z.string().min(2, 'City is required').optional(),
+  buyerNotes: z.string().optional(),
+})
+
+// ============================================
+// DISCOUNT CODE VALIDATIONS
+// ============================================
+
+export const createDiscountCodeSchema = z.object({
+  code: z.string()
+    .min(3, 'كود الخصم يجب أن يكون 3 أحرف على الأقل')
+    .max(20, 'كود الخصم يجب أن لا يتجاوز 20 حرف')
+    .regex(/^[A-Z0-9\-]+$/i, 'كود الخصم يجب أن يحتوي على أحرف إنجليزية وأرقام فقط')
+    .transform((val) => val.toUpperCase()),
+  discountPercent: z.coerce.number()
+    .min(1, 'نسبة الخصم يجب أن تكون 1% على الأقل')
+    .max(100, 'نسبة الخصم لا يمكن أن تتجاوز 100%'),
+  isSingleUse: z.coerce.boolean().default(false),
+  maxUsage: z.coerce.number().int().positive('حد الاستخدام يجب أن يكون رقم موجب').optional().nullable(),
+  minOrderAmount: z.coerce.number().positive('الحد الأدنى للطلب يجب أن يكون رقم موجب').optional().nullable(),
+  startDate: z.string().optional().nullable().transform((val) => val ? new Date(val) : null),
+  endDate: z.string().optional().nullable().transform((val) => val ? new Date(val) : null),
+  isActive: z.coerce.boolean().default(true),
+})
+
+export const validateDiscountCodeSchema = z.object({
+  code: z.string().min(1, 'كود الخصم مطلوب'),
+  orderTotal: z.coerce.number().positive('مبلغ الطلب يجب أن يكون موجب'),
+})
+
+export const confirmDiscountCodeSchema = z.object({
+  code: z.string().min(1, 'كود الخصم مطلوب'),
+  orderId: z.string().min(1, 'رقم الطلب مطلوب'),
+  orderTotal: z.coerce.number().positive('مبلغ الطلب يجب أن يكون موجب'),
 })
 
 // Type exports from schemas

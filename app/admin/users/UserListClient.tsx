@@ -22,7 +22,7 @@ interface Props {
     city: string | null
     isActive: boolean
     createdAt: Date
-    _count: { buyerOrders: number }
+    _count: { buyerOrders: number; supplierOrders: number }
   }>
   total: number
   pages: number
@@ -109,7 +109,7 @@ export function UserListClient({ users, total, pages, currentPage, currentRole, 
                   <thead>
                     <tr className="border-b border-gray-200">
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.userManagement.name}</th>
-                      <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.userManagement.email}</th>
+                      <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.userManagement.phone}</th>
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.userManagement.role}</th>
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.userManagement.city}</th>
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.userManagement.ordersCount}</th>
@@ -126,14 +126,14 @@ export function UserListClient({ users, total, pages, currentPage, currentRole, 
                             {user.storeName && <p className="text-xs text-gray-500">{user.storeName}</p>}
                           </div>
                         </td>
-                        <td className="py-3 text-gray-600">{user.email}</td>
+                        <td className="py-3 text-gray-600 dir-ltr">{user.phone || '-'}</td>
                         <td className="py-3">
                           <Badge status={user.role === 'ADMIN' ? 'admin' : user.role === 'BUYER' ? 'buyer' : 'supplier'}>
                             {t.roles[user.role.toLowerCase() as keyof typeof t.roles]}
                           </Badge>
                         </td>
                         <td className="py-3 text-gray-600">{user.city || '-'}</td>
-                        <td className="py-3 text-gray-700">{user._count.buyerOrders}</td>
+                        <td className="py-3 text-gray-700">{(user._count.buyerOrders || 0) + (user._count.supplierOrders || 0)}</td>
                         <td className="py-3">
                           <Badge status={user.isActive ? 'active' : 'inactive'}>
                             {user.isActive ? t.userManagement.active : t.userManagement.inactive}

@@ -15,7 +15,7 @@ export async function GET(
   const { id } = await params
 
   const product = await db.product.findUnique({
-    where: { id, isActive: true },
+    where: { id, isActive: true, stock: { gt: 0 } },
     include: {
       category: { select: { id: true, name: true, nameEn: true, slug: true } },
       units: { 

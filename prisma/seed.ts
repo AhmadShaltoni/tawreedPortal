@@ -3,20 +3,34 @@ import { hash } from 'bcryptjs'
 
 const prisma = new PrismaClient()
 
-const categories = [
-  { name: 'سكر', nameEn: 'Sugar', slug: 'sugar', sortOrder: 1 },
-  { name: 'أرز', nameEn: 'Rice', slug: 'rice', sortOrder: 2 },
-  { name: 'حلويات وسناكات', nameEn: 'Candy & Snacks', slug: 'candy-snacks', sortOrder: 3 },
-  { name: 'منتجات الألبان', nameEn: 'Dairy Products', slug: 'dairy', sortOrder: 4 },
-  { name: 'مشروبات', nameEn: 'Beverages', slug: 'beverages', sortOrder: 5 },
-  { name: 'معلبات', nameEn: 'Canned Goods', slug: 'canned-goods', sortOrder: 6 },
-  { name: 'زيت طبخ', nameEn: 'Cooking Oil', slug: 'cooking-oil', sortOrder: 7 },
-  { name: 'طحين وحبوب', nameEn: 'Flour & Grains', slug: 'flour-grains', sortOrder: 8 },
-  { name: 'بهارات', nameEn: 'Spices', slug: 'spices', sortOrder: 9 },
-  { name: 'مواد تنظيف', nameEn: 'Cleaning Products', slug: 'cleaning', sortOrder: 10 },
-  { name: 'عناية شخصية', nameEn: 'Personal Care', slug: 'personal-care', sortOrder: 11 },
-  { name: 'أخرى', nameEn: 'Other', slug: 'other', sortOrder: 12 },
+// Parent (root) categories
+const rootCategories = [
+  { name: 'مواد تموينية', nameEn: 'Grocery Supplies', slug: 'grocery-supplies', sortOrder: 1 },
+  { name: 'مشروبات ومأكولات', nameEn: 'Food & Beverages', slug: 'food-beverages', sortOrder: 2 },
+  { name: 'منظفات وعناية', nameEn: 'Cleaning & Care', slug: 'cleaning-care', sortOrder: 3 },
+  { name: 'أخرى', nameEn: 'Other', slug: 'other', sortOrder: 4 },
 ]
+
+// Subcategories mapped to their parent slug
+const subcategories: Record<string, Array<{ name: string; nameEn: string; slug: string; sortOrder: number }>> = {
+  'grocery-supplies': [
+    { name: 'سكر', nameEn: 'Sugar', slug: 'sugar', sortOrder: 1 },
+    { name: 'أرز', nameEn: 'Rice', slug: 'rice', sortOrder: 2 },
+    { name: 'زيت طبخ', nameEn: 'Cooking Oil', slug: 'cooking-oil', sortOrder: 3 },
+    { name: 'طحين وحبوب', nameEn: 'Flour & Grains', slug: 'flour-grains', sortOrder: 4 },
+    { name: 'بهارات', nameEn: 'Spices', slug: 'spices', sortOrder: 5 },
+  ],
+  'food-beverages': [
+    { name: 'حلويات وسناكات', nameEn: 'Candy & Snacks', slug: 'candy-snacks', sortOrder: 1 },
+    { name: 'منتجات الألبان', nameEn: 'Dairy Products', slug: 'dairy', sortOrder: 2 },
+    { name: 'مشروبات', nameEn: 'Beverages', slug: 'beverages', sortOrder: 3 },
+    { name: 'معلبات', nameEn: 'Canned Goods', slug: 'canned-goods', sortOrder: 4 },
+  ],
+  'cleaning-care': [
+    { name: 'مواد تنظيف', nameEn: 'Cleaning Products', slug: 'cleaning', sortOrder: 1 },
+    { name: 'عناية شخصية', nameEn: 'Personal Care', slug: 'personal-care', sortOrder: 2 },
+  ],
+}
 
 // All Jordan cities with their areas
 const jordanCities: { name: string; nameEn: string; sortOrder: number; areas: { name: string; nameEn: string }[] }[] = [
@@ -176,15 +190,38 @@ const jordanCities: { name: string; nameEn: string; sortOrder: number; areas: { 
 async function main() {
   console.log('🌱 Seeding database...')
 
-  // Seed categories
-  for (const cat of categories) {
-    await prisma.category.upsert({
-      where: { slug: cat.slug },
-      update: { name: cat.name, nameEn: cat.nameEn, sortOrder: cat.sortOrder },
-      create: cat,
+  // Seed hierarchical categories
+  let totalCategories = 0
+  for (const rootCat of rootCategories) {
+    // Create or update root category
+    const root = await prisma.category.upsert({
+      where: { slug: rootCat.slug },
+      update: { name: rootCat.name, nameEn: rootCat.nameEn, sortOrder: rootCat.sortOrder, parentId: null, depth: 0 },
+      create: { ...rootCat, depth: 0, path: '' },
     })
+    // Update path to include own ID
+    await prisma.category.update({
+      where: { id: root.id },
+      data: { path: root.id },
+    })
+    totalCategories++
+
+    // Create subcategories for this root
+    const children = subcategories[rootCat.slug] || []
+    for (const childCat of children) {
+      const child = await prisma.category.upsert({
+        where: { slug: childCat.slug },
+        update: { name: childCat.name, nameEn: childCat.nameEn, sortOrder: childCat.sortOrder, parentId: root.id, depth: 1 },
+        create: { ...childCat, parentId: root.id, depth: 1, path: '' },
+      })
+      await prisma.category.update({
+        where: { id: child.id },
+        data: { path: `${root.id}/${child.id}` },
+      })
+      totalCategories++
+    }
   }
-  console.log(`✅ Seeded ${categories.length} categories`)
+  console.log(`✅ Seeded ${totalCategories} categories (hierarchical)`)
 
   // Seed Jordan cities and areas
   let totalAreas = 0

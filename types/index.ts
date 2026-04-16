@@ -126,6 +126,9 @@ export interface Category {
   image: string | null
   sortOrder: number
   isActive: boolean
+  parentId: string | null
+  depth: number
+  path: string
   createdAt: Date
   updatedAt: Date
 }
@@ -221,6 +224,18 @@ export type CategoryWithProducts = Category & {
   _count?: { products: number }
 }
 
+export type CategoryWithChildren = Category & {
+  children: CategoryWithChildren[]
+  _count?: { products: number; children: number }
+}
+
+export type CategoryBreadcrumb = {
+  id: string
+  name: string
+  nameEn: string | null
+  slug: string
+}
+
 export type NotificationWithUser = Notification & {
   user: User
 }
@@ -283,6 +298,49 @@ export interface ActionResponse<T = void> {
   data?: T
   error?: string
   errors?: Record<string, string[]>
+}
+
+// Discount Code types
+export interface DiscountCode {
+  id: string
+  code: string
+  discountPercent: number
+  isSingleUse: boolean
+  maxUsage: number | null
+  minOrderAmount: number | null
+  startDate: Date | null
+  endDate: Date | null
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface DiscountCodeUsage {
+  id: string
+  discountAmount: number
+  orderTotal: number
+  createdAt: Date
+  discountCodeId: string
+  userId: string
+  orderId: string | null
+}
+
+export type DiscountCodeWithStats = DiscountCode & {
+  _count: { usages: number }
+}
+
+export type DiscountCodeWithUsages = DiscountCode & {
+  usages: (DiscountCodeUsage & { user: Pick<User, 'id' | 'username' | 'phone'> })[]
+  _count: { usages: number }
+}
+
+export interface ValidateDiscountCodeResult {
+  valid: boolean
+  discountPercent?: number
+  discountAmount?: number
+  finalTotal?: number
+  error?: string
+  message?: string
 }
 
 // Dashboard stats types
