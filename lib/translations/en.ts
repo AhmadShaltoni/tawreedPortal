@@ -867,5 +867,3 @@ export const en: TranslationKeys = {
     changeImage: 'Change image',
   },
 }
-
-export type TranslationKeys = typeof en
