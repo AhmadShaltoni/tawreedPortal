@@ -1,86 +1,75 @@
-import { writeFile, mkdir, unlink } from 'fs/promises'
-import path from 'path'
-import crypto from 'crypto'
+import { v2 as cloudinary } from 'cloudinary'
 
-const PRODUCTS_UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'products')
-const CATEGORIES_UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'categories')
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+})
+
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_SIZE = 5 * 1024 * 1024 // 5MB
 
-// ============ PRODUCT IMAGES ============
-export async function saveProductImage(file: File): Promise<string> {
-  // Validate file type
+async function uploadToCloudinary(file: File, folder: string): Promise<string> {
   if (!ALLOWED_TYPES.includes(file.type)) {
     throw new Error('Invalid file type. Only JPEG, PNG, and WebP are allowed.')
   }
-
-  // Validate file size
   if (file.size > MAX_SIZE) {
     throw new Error('File too large. Maximum size is 5MB.')
   }
 
-  // Ensure upload directory exists
-  await mkdir(PRODUCTS_UPLOAD_DIR, { recursive: true })
-
-  // Generate unique filename
-  const ext = file.type.split('/')[1] === 'jpeg' ? 'jpg' : file.type.split('/')[1]
-  const filename = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}.${ext}`
-  const filepath = path.join(PRODUCTS_UPLOAD_DIR, filename)
-
-  // Write file
   const buffer = Buffer.from(await file.arrayBuffer())
-  await writeFile(filepath, buffer)
+  const base64 = `data:${file.type};base64,${buffer.toString('base64')}`
 
-  // Return relative path for storage in DB
-  return `/uploads/products/${filename}`
+  const result = await cloudinary.uploader.upload(base64, {
+    folder: `tawreed/${folder}`,
+    resource_type: 'image',
+  })
+
+  return result.secure_url
+}
+
+function extractPublicId(url: string): string | null {
+  try {
+    const match = url.match(/\/upload\/(?:v\d+\/)?(.+)\.\w+$/)
+    return match ? match[1] : null
+  } catch {
+    return null
+  }
+}
+
+async function deleteFromCloudinary(imageUrl: string): Promise<void> {
+  if (!imageUrl || !imageUrl.includes('cloudinary')) return
+  const publicId = extractPublicId(imageUrl)
+  if (publicId) {
+    try {
+      await cloudinary.uploader.destroy(publicId)
+    } catch {
+      // Ignore deletion errors
+    }
+  }
+}
+
+// ============ PRODUCT IMAGES ============
+export async function saveProductImage(file: File): Promise<string> {
+  return uploadToCloudinary(file, 'products')
 }
 
 export async function deleteProductImage(imagePath: string): Promise<void> {
-  if (!imagePath || !imagePath.startsWith('/uploads/products/')) return
-
-  const filepath = path.join(process.cwd(), 'public', imagePath)
-  try {
-    await unlink(filepath)
-  } catch {
-    // File may not exist, ignore
+  if (!imagePath) return
+  if (imagePath.includes('cloudinary')) {
+    await deleteFromCloudinary(imagePath)
   }
+  // Old local paths are ignored (no longer on filesystem)
 }
 
 // ============ CATEGORY IMAGES ============
 export async function saveCategoryImage(file: File): Promise<string> {
-  // Validate file type
-  if (!ALLOWED_TYPES.includes(file.type)) {
-    throw new Error('Invalid file type. Only JPEG, PNG, and WebP are allowed.')
-  }
-
-  // Validate file size
-  if (file.size > MAX_SIZE) {
-    throw new Error('File too large. Maximum size is 5MB.')
-  }
-
-  // Ensure upload directory exists
-  await mkdir(CATEGORIES_UPLOAD_DIR, { recursive: true })
-
-  // Generate unique filename
-  const ext = file.type.split('/')[1] === 'jpeg' ? 'jpg' : file.type.split('/')[1]
-  const filename = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}.${ext}`
-  const filepath = path.join(CATEGORIES_UPLOAD_DIR, filename)
-
-  // Write file
-  const buffer = Buffer.from(await file.arrayBuffer())
-  await writeFile(filepath, buffer)
-
-  // Return relative path for storage in DB
-  return `/uploads/categories/${filename}`
+  return uploadToCloudinary(file, 'categories')
 }
 
 export async function deleteCategoryImage(imagePath: string): Promise<void> {
-  if (!imagePath || !imagePath.startsWith('/uploads/categories/')) return
-
-  const filepath = path.join(process.cwd(), 'public', imagePath)
-  try {
-    await unlink(filepath)
-  } catch {
-    // File may not exist, ignore
+  if (!imagePath) return
+  if (imagePath.includes('cloudinary')) {
+    await deleteFromCloudinary(imagePath)
   }
 }
