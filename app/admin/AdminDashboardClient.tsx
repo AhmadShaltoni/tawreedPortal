@@ -42,21 +42,31 @@ export function AdminDashboardClient({ stats, recentOrders }: Props) {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {statCards.map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="p-4">
-              <div className={`flex items-center gap-4 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
-                <div className={`p-3 rounded-lg ${stat.color}`}>
-                  <stat.icon className="w-6 h-6 text-white" />
+        {statCards.map((stat) => {
+          const isRevenue = stat.label === t.adminStats.totalRevenue
+          const cardElement = (
+            <Card key={stat.label} className={isRevenue ? 'cursor-pointer hover:shadow-md hover:ring-2 hover:ring-purple-200 transition-all' : ''}>
+              <CardContent className="p-4">
+                <div className={`flex items-center gap-4 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                  <div className={`p-3 rounded-lg ${stat.color}`}>
+                    <stat.icon className="w-6 h-6 text-white" />
+                  </div>
+                  <div className={dir === 'rtl' ? 'text-right' : ''}>
+                    <p className="text-sm text-gray-500">{stat.label}</p>
+                    <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                  </div>
                 </div>
-                <div className={dir === 'rtl' ? 'text-right' : ''}>
-                  <p className="text-sm text-gray-500">{stat.label}</p>
-                  <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          )
+          return isRevenue ? (
+            <Link key={stat.label} href="/admin/revenue" className="block">
+              {cardElement}
+            </Link>
+          ) : (
+            cardElement
+          )
+        })}
       </div>
 
       {/* Quick Actions */}

@@ -16,9 +16,13 @@ export async function GET(request: NextRequest) {
   const cartItems = await db.cartItem.findMany({
     where: { buyerId: user.id },
     include: {
-      product: {
+      variant: {
         include: {
-          category: { select: { id: true, name: true, nameEn: true, slug: true } },
+          product: {
+            include: {
+              category: { select: { id: true, name: true, nameEn: true, slug: true } },
+            },
+          },
           units: { orderBy: { sortOrder: 'asc' } },
         },
       },
@@ -28,7 +32,7 @@ export async function GET(request: NextRequest) {
   })
 
   const total = cartItems.reduce((sum, item) => {
-    const unitPrice = item.productUnit?.price ?? item.product.price
+    const unitPrice = item.productUnit?.price ?? item.variant.units.find(u => u.isDefault)?.price ?? 0
     return sum + unitPrice * item.quantity
   }, 0)
 
@@ -46,37 +50,40 @@ export async function POST(request: NextRequest) {
     return apiResponse({ error: 'Validation failed', errors: validated.error.flatten().fieldErrors }, 400)
   }
 
-  // Check product exists and is active
-  const product = await db.product.findUnique({ where: { id: validated.data.productId } })
-  if (!product || !product.isActive) {
-    return apiError('Product not found or unavailable', 404)
+  // Check variant exists and is active
+  const variant = await db.productVariant.findUnique({
+    where: { id: validated.data.variantId },
+    include: { product: true },
+  })
+  if (!variant || !variant.isActive || !variant.product.isActive) {
+    return apiError('Product variant not found or unavailable', 404)
   }
 
   // Validate productUnitId if provided
   if (validated.data.productUnitId) {
     const productUnit = await db.productUnit.findUnique({ where: { id: validated.data.productUnitId } })
-    if (!productUnit || productUnit.productId !== product.id) {
+    if (!productUnit || productUnit.variantId !== variant.id) {
       return apiError('Invalid product unit', 400)
     }
   }
 
   // Check minimum order quantity
-  if (validated.data.quantity < product.minOrderQuantity) {
-    return apiError(`Minimum order quantity is ${product.minOrderQuantity}`, 400)
+  if (validated.data.quantity < variant.minOrderQuantity) {
+    return apiError(`Minimum order quantity is ${variant.minOrderQuantity}`, 400)
   }
 
   // Check stock
-  if (product.stock < validated.data.quantity) {
-    return apiError(`Only ${product.stock} items available`, 400)
+  if (variant.stock < validated.data.quantity) {
+    return apiError(`Only ${variant.stock} items available`, 400)
   }
 
   const productUnitId = validated.data.productUnitId ?? null
 
-  // Find existing cart item with same product+unit combo
+  // Find existing cart item with same variant+unit combo
   const existing = await db.cartItem.findFirst({
     where: {
       buyerId: user.id,
-      productId: validated.data.productId,
+      variantId: validated.data.variantId,
       productUnitId: productUnitId,
     },
   })
@@ -88,18 +95,18 @@ export async function POST(request: NextRequest) {
     cartItem = await db.cartItem.update({
       where: { id: existing.id },
       data: { quantity: newQuantity },
-      include: { product: true, productUnit: true },
+      include: { variant: { include: { product: true } }, productUnit: true },
     })
   } else {
     // New item - create it
     cartItem = await db.cartItem.create({
       data: {
         buyerId: user.id,
-        productId: validated.data.productId,
+        variantId: validated.data.variantId,
         productUnitId: productUnitId,
         quantity: validated.data.quantity,
       },
-      include: { product: true, productUnit: true },
+      include: { variant: { include: { product: true } }, productUnit: true },
     })
   }
 

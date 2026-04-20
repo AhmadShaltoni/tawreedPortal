@@ -289,8 +289,12 @@ model OrderItem {
   productNameEn String?
   productImage  String?
   
+  // Variant snapshot
+  variantSize   String?    // e.g., "2 كيلو"
+  variantSizeEn String?    // e.g., "2kg"
+  
   // Unit snapshot (captures which unit was selected at order time)
-  unitLabel     String?    // e.g., "كرتونةة (36 قطعة)"
+  unitLabel     String?    // e.g., "كرتونة (36 قطعة)"
   unitLabelEn   String?    // e.g., "Carton (36 pieces)"
   piecesPerUnit Int       @default(1) // How many pieces in the selected unit
   
@@ -342,6 +346,28 @@ model Category {
   @@index([path])
 }
 
+// Supplier (managed by admin, provides products)
+model Supplier {
+  id          String    @id @default(cuid())
+  name        String    // Arabic name
+  nameEn      String?   // English name
+  phone       String?
+  email       String?
+  address     String?
+  city        String?
+  isDefault   Boolean   @default(false) // Default supplier for new products
+  isActive    Boolean   @default(true)
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  products    Product[]
+  
+  @@index([isActive])
+  @@index([isDefault])
+}
+
 // Product in the catalog
 model Product {
   id              String    @id @default(cuid())
@@ -352,10 +378,6 @@ model Product {
   description     String?   // Arabic description
   descriptionEn   String?   // English description
   
-  // Pricing (default unit price, kept for backward compatibility)
-  price           Float     // Current price (JOD) - default unit price
-  compareAtPrice  Float?    // Original price for showing discount
-  
   // Media
   image           String?   // Main product image path
   images          String[]  // Additional images
@@ -363,13 +385,10 @@ model Product {
   // Classification
   categoryId      String
   category        Category  @relation(fields: [categoryId], references: [id])
-  unit            Unit      @default(PIECE)
   
-  // Inventory
-  sku             String?   @unique
-  barcode         String?
-  stock           Int       @default(0)
-  minOrderQuantity Int      @default(1)
+  // Supplier
+  supplierId      String?
+  supplier        Supplier? @relation(fields: [supplierId], references: [id])
   
   // Status
   isActive        Boolean   @default(true)
@@ -379,26 +398,32 @@ model Product {
   updatedAt       DateTime  @updatedAt
   
   // Relations
-  units           ProductUnit[]  // Multiple selling units (piece, dozen, carton...)
-  cartItems       CartItem[]
+  variants        ProductVariant[]  // Multiple size variants (e.g., 2kg, 4kg)
   orderItems      OrderItem[]
   
   @@index([categoryId])
+  @@index([supplierId])
   @@index([isActive])
   @@index([sortOrder])
 }
 
-// Product selling unit (e.g., piece, dozen, carton with different prices)
-model ProductUnit {
+// Product size variant (e.g., 2kg, 4kg of the same product)
+model ProductVariant {
   id              String    @id @default(cuid())
   
-  unit            Unit      // PIECE, DOZEN, CARTON, BOX, etc.
-  label           String    // Arabic label: "قطعة", "دزينة", "كرتونةة"
-  labelEn         String?   // English label: "Piece", "Dozen", "Carton"
-  piecesPerUnit   Int       @default(1)  // 1 for piece, 12 for dozen, 36 for carton
-  price           Float     // Price for this unit (JOD)
-  compareAtPrice  Float?    // Original price before discount for this unit
-  isDefault       Boolean   @default(false) // Default unit shown in product card
+  // Size info
+  size            String    // Arabic size label: "2 كيلو", "4 كيلو"
+  sizeEn          String?   // English size label: "2kg", "4kg"
+  
+  // Inventory (per variant)
+  sku             String?   @unique
+  barcode         String?
+  stock           Int       @default(0)
+  minOrderQuantity Int      @default(1)
+  
+  // Status
+  isDefault       Boolean   @default(false) // Default variant shown in product card
+  isActive        Boolean   @default(true)
   sortOrder       Int       @default(0)
   
   createdAt       DateTime  @default(now())
@@ -407,10 +432,36 @@ model ProductUnit {
   // Relations
   productId       String
   product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  units           ProductUnit[]  // Selling units for this variant (piece, dozen, carton...)
   cartItems       CartItem[]
   
-  @@unique([productId, unit]) // No duplicate unit per product
   @@index([productId])
+}
+
+// Product selling unit (e.g., piece, dozen, carton with different prices)
+model ProductUnit {
+  id              String    @id @default(cuid())
+  
+  unit            Unit      // PIECE, DOZEN, CARTON, BOX, etc.
+  label           String    // Arabic label: "قطعة", "دزينة", "كرتونة"
+  labelEn         String?   // English label: "Piece", "Dozen", "Carton"
+  piecesPerUnit   Int       @default(1)  // 1 for piece, 12 for dozen, 36 for carton
+  price           Float     // Price for this unit (JOD)
+  wholesalePrice  Float?    // Wholesale/cost price for profit calculation (JOD)
+  compareAtPrice  Float?    // Original price before discount for this unit
+  isDefault       Boolean   @default(false) // Default unit shown in product card
+  sortOrder       Int       @default(0)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  variantId       String
+  variant         ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  cartItems       CartItem[]
+  
+  @@unique([variantId, unit]) // No duplicate unit per variant
+  @@index([variantId])
 }
 
 // Shopping cart item (server-side cart for mobile app)
@@ -425,14 +476,15 @@ model CartItem {
   buyerId     String
   buyer       User     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
   
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // Variant (required - specifies which size variant)
+  variantId   String
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
   
-  // Selected unit (optional - if null, uses product default unit/price)
+  // Selected unit (optional - if null, uses variant default unit/price)
   productUnitId String?
   productUnit   ProductUnit? @relation(fields: [productUnitId], references: [id])
   
-  @@unique([buyerId, productId, productUnitId]) // One cart entry per product+unit per buyer
+  @@unique([buyerId, variantId, productUnitId]) // One cart entry per variant+unit per buyer
   @@index([buyerId])
 }
 

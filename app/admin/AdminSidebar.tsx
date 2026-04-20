@@ -12,7 +12,9 @@ import {
   StickyNote,
   Ticket,
   Settings,
-  Package2
+  Package2,
+  Truck,
+  BarChart3
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/LanguageContext'
@@ -24,12 +26,14 @@ export function AdminSidebar() {
   const links = [
     { href: '/admin', label: t.admin.dashboard, icon: LayoutDashboard, exact: true },
     { href: '/admin/products', label: t.admin.products, icon: Package },
+    { href: '/admin/suppliers', label: t.admin.suppliers || 'الموردين', icon: Truck },
     { href: '/admin/categories', label: t.admin.categories, icon: FolderTree },
     { href: '/admin/orders', label: t.admin.orders, icon: ShoppingCart },
     { href: '/admin/users', label: t.admin.users, icon: Users },
     { href: '/admin/notifications', label: t.admin.notifications, icon: Bell },
     { href: '/admin/notices', label: t.admin.notices, icon: StickyNote },
     { href: '/admin/coupons', label: t.admin.coupons, icon: Ticket },
+    { href: '/admin/revenue', label: t.admin.revenue || 'الإيرادات والأرباح', icon: BarChart3 },
   ]
 
   return (

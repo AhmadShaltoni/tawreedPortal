@@ -92,6 +92,8 @@ export interface OrderItem {
   productName: string
   productNameEn: string | null
   productImage: string | null
+  variantSize: string | null
+  variantSizeEn: string | null
   unitLabel: string | null
   unitLabelEn: string | null
   piecesPerUnit: number
@@ -109,8 +111,25 @@ export interface ProductUnit {
   labelEn: string | null
   piecesPerUnit: number
   price: number
+  wholesalePrice: number | null
   compareAtPrice: number | null
   isDefault: boolean
+  sortOrder: number
+  variantId: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface ProductVariant {
+  id: string
+  size: string
+  sizeEn: string | null
+  sku: string | null
+  barcode: string | null
+  stock: number
+  minOrderQuantity: number
+  isDefault: boolean
+  isActive: boolean
   sortOrder: number
   productId: string
   createdAt: Date
@@ -139,16 +158,9 @@ export interface Product {
   nameEn: string | null
   description: string | null
   descriptionEn: string | null
-  price: number
-  compareAtPrice: number | null
   image: string | null
   images: string[]
   categoryId: string
-  unit: Unit
-  sku: string | null
-  barcode: string | null
-  stock: number
-  minOrderQuantity: number
   isActive: boolean
   sortOrder: number
   createdAt: Date
@@ -159,7 +171,7 @@ export interface CartItem {
   id: string
   quantity: number
   buyerId: string
-  productId: string
+  variantId: string
   productUnitId: string | null
   createdAt: Date
   updatedAt: Date
@@ -209,13 +221,20 @@ export type ProductWithCategory = Product & {
   category: Category
 }
 
-export type ProductWithUnits = Product & {
-  category: Category
+export type ProductVariantWithUnits = ProductVariant & {
   units: ProductUnit[]
 }
 
+export type ProductWithVariants = Product & {
+  category: Category
+  variants: ProductVariantWithUnits[]
+}
+
 export type CartItemWithProduct = CartItem & {
-  product: ProductWithCategory
+  variant: ProductVariant & {
+    product: ProductWithCategory
+    units: ProductUnit[]
+  }
   productUnit: ProductUnit | null
 }
 

@@ -282,6 +282,122 @@ async function main() {
     console.log('ℹ️ Admin user already exists')
   }
 
+  // Seed sample products with variants
+  const sugarCategory = await prisma.category.findFirst({ where: { slug: 'sugar' } })
+  const riceCategory = await prisma.category.findFirst({ where: { slug: 'rice' } })
+
+  if (sugarCategory) {
+    const existingProduct = await prisma.product.findFirst({ where: { name: 'سكر أبيض' } })
+    if (!existingProduct) {
+      await prisma.product.create({
+        data: {
+          name: 'سكر أبيض',
+          nameEn: 'White Sugar',
+          description: 'سكر أبيض ناعم عالي الجودة',
+          descriptionEn: 'High quality fine white sugar',
+          categoryId: sugarCategory.id,
+          isActive: true,
+          sortOrder: 0,
+          variants: {
+            create: [
+              {
+                size: '2 كيلو',
+                sizeEn: '2kg',
+                stock: 100,
+                minOrderQuantity: 1,
+                isDefault: true,
+                sortOrder: 0,
+                units: {
+                  create: [
+                    { unit: 'PIECE', label: 'قطعة', labelEn: 'Piece', piecesPerUnit: 1, price: 3, isDefault: true, sortOrder: 0 },
+                    { unit: 'DOZEN', label: 'دزينة', labelEn: 'Dozen', piecesPerUnit: 12, price: 33, isDefault: false, sortOrder: 1 },
+                  ],
+                },
+              },
+              {
+                size: '4 كيلو',
+                sizeEn: '4kg',
+                stock: 50,
+                minOrderQuantity: 1,
+                isDefault: false,
+                sortOrder: 1,
+                units: {
+                  create: [
+                    { unit: 'PIECE', label: 'قطعة', labelEn: 'Piece', piecesPerUnit: 1, price: 5, isDefault: true, sortOrder: 0 },
+                    { unit: 'DOZEN', label: 'دزينة', labelEn: 'Dozen', piecesPerUnit: 12, price: 55, isDefault: false, sortOrder: 1 },
+                  ],
+                },
+              },
+              {
+                size: '10 كيلو',
+                sizeEn: '10kg',
+                stock: 30,
+                minOrderQuantity: 1,
+                isDefault: false,
+                sortOrder: 2,
+                units: {
+                  create: [
+                    { unit: 'PIECE', label: 'قطعة', labelEn: 'Piece', piecesPerUnit: 1, price: 10, isDefault: true, sortOrder: 0 },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      })
+      console.log('✅ Created sample product: سكر أبيض (3 variants)')
+    }
+  }
+
+  if (riceCategory) {
+    const existingProduct = await prisma.product.findFirst({ where: { name: 'أرز بسمتي' } })
+    if (!existingProduct) {
+      await prisma.product.create({
+        data: {
+          name: 'أرز بسمتي',
+          nameEn: 'Basmati Rice',
+          description: 'أرز بسمتي هندي طويل الحبة',
+          descriptionEn: 'Indian long grain basmati rice',
+          categoryId: riceCategory.id,
+          isActive: true,
+          sortOrder: 1,
+          variants: {
+            create: [
+              {
+                size: '1 كيلو',
+                sizeEn: '1kg',
+                stock: 200,
+                minOrderQuantity: 1,
+                isDefault: true,
+                sortOrder: 0,
+                units: {
+                  create: [
+                    { unit: 'PIECE', label: 'قطعة', labelEn: 'Piece', piecesPerUnit: 1, price: 2.5, isDefault: true, sortOrder: 0 },
+                    { unit: 'CARTON', label: 'كرتونة', labelEn: 'Carton', piecesPerUnit: 24, price: 55, isDefault: false, sortOrder: 1 },
+                  ],
+                },
+              },
+              {
+                size: '5 كيلو',
+                sizeEn: '5kg',
+                stock: 80,
+                minOrderQuantity: 1,
+                isDefault: false,
+                sortOrder: 1,
+                units: {
+                  create: [
+                    { unit: 'PIECE', label: 'قطعة', labelEn: 'Piece', piecesPerUnit: 1, price: 10, isDefault: true, sortOrder: 0 },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      })
+      console.log('✅ Created sample product: أرز بسمتي (2 variants)')
+    }
+  }
+
   console.log('🌱 Seeding complete!')
 }
 

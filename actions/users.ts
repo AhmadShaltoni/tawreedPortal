@@ -122,3 +122,28 @@ export async function getUserById(id: string) {
     },
   })
 }
+
+export async function deleteUser(id: string): Promise<ActionResponse> {
+  const { authorized, error } = await requireRole(['ADMIN'])
+  if (!authorized) return { success: false, error: error ?? 'Not authorized' }
+
+  const user = await db.user.findUnique({ where: { id } })
+  if (!user) return { success: false, error: 'User not found' }
+
+  // Prevent deleting the only admin user
+  if (user.role === 'ADMIN') {
+    const adminCount = await db.user.count({ where: { role: 'ADMIN' } })
+    if (adminCount <= 1) {
+      return { success: false, error: 'Cannot delete the only admin user' }
+    }
+  }
+
+  try {
+    await db.user.delete({ where: { id } })
+    revalidatePath('/admin/users')
+    return { success: true }
+  } catch (error) {
+    console.error('Error deleting user:', error)
+    return { success: false, error: 'Failed to delete user. User may have associated data.' }
+  }
+}

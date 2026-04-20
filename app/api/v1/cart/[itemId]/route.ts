@@ -20,7 +20,7 @@ export async function PATCH(
 
   const cartItem = await db.cartItem.findUnique({
     where: { id: itemId },
-    include: { product: true },
+    include: { variant: true },
   })
 
   if (!cartItem || cartItem.buyerId !== user.id) {
@@ -34,14 +34,14 @@ export async function PATCH(
   }
 
   // Check stock
-  if (cartItem.product.stock < validated.data.quantity) {
-    return apiError(`Only ${cartItem.product.stock} items available`, 400)
+  if (cartItem.variant.stock < validated.data.quantity) {
+    return apiError(`Only ${cartItem.variant.stock} items available`, 400)
   }
 
   const updated = await db.cartItem.update({
     where: { id: itemId },
     data: { quantity: validated.data.quantity },
-    include: { product: true },
+    include: { variant: { include: { product: true } } },
   })
 
   return apiResponse({ item: updated })

@@ -2,7 +2,7 @@
 
 import { db } from '@/lib/db'
 import { requireRole } from '@/lib/auth'
-import { createProductSchema, updateProductSchema, productUnitSchema } from '@/lib/validations'
+import { createProductSchema, updateProductSchema, productVariantSchema } from '@/lib/validations'
 import { saveProductImage, deleteProductImage } from '@/lib/upload'
 import type { ActionResponse } from '@/types'
 import type { Unit } from '@prisma/client'
@@ -17,25 +17,14 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
     nameEn: formData.get('nameEn') || undefined,
     description: formData.get('description') || undefined,
     descriptionEn: formData.get('descriptionEn') || undefined,
-    price: formData.get('price'),
-    compareAtPrice: formData.get('compareAtPrice') || undefined,
     categoryId: formData.get('categoryId'),
-    unit: formData.get('unit'),
-    sku: formData.get('sku') || undefined,
-    barcode: formData.get('barcode') || undefined,
-    stock: formData.get('stock'),
-    minOrderQuantity: formData.get('minOrderQuantity') || 1,
+    supplierId: formData.get('supplierId') || undefined,
     isActive: formData.get('isActive') === 'true',
   }
 
   const validated = createProductSchema.safeParse(rawData)
   if (!validated.success) {
     return { success: false, errors: validated.error.flatten().fieldErrors }
-  }
-
-  // Prevent adding product with 0 stock
-  if (validated.data.stock <= 0) {
-    return { success: false, error: 'لا يمكن إضافة منتج بمخزون 0' }
   }
 
   // Handle image upload
@@ -49,68 +38,88 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
     }
   }
 
-  // Parse and validate units BEFORE creating the product
-  const unitsJson = formData.get('units')
-  console.log('[createProduct] Raw units from formData:', typeof unitsJson, unitsJson ? String(unitsJson).substring(0, 200) : 'NULL')
-  
-  const validatedUnits: Array<{
-    unit: Unit
-    label: string
-    labelEn?: string
-    piecesPerUnit: number
-    price: number
-    compareAtPrice?: number | null
-    isDefault: boolean
-    sortOrder: number
-  }> = []
-
-  if (unitsJson && typeof unitsJson === 'string') {
-    try {
-      const unitsData = JSON.parse(unitsJson)
-      console.log('[createProduct] Parsed units count:', Array.isArray(unitsData) ? unitsData.length : 'NOT_ARRAY')
-      if (Array.isArray(unitsData)) {
-        for (let i = 0; i < unitsData.length; i++) {
-          const unitResult = productUnitSchema.safeParse(unitsData[i])
-          if (unitResult.success) {
-            validatedUnits.push({
-              ...unitResult.data,
-              unit: unitResult.data.unit as Unit,
-              isDefault: unitResult.data.isDefault ?? false,
-              sortOrder: unitResult.data.sortOrder ?? i,
-            })
-          } else {
-            console.error(`[createProduct] Unit ${i} validation failed:`, JSON.stringify(unitResult.error.issues))
-          }
-        }
-      }
-    } catch (err) {
-      console.error('[createProduct] Failed to parse units JSON:', err)
-    }
+  // Parse and validate variants
+  const variantsJson = formData.get('variants')
+  if (!variantsJson || typeof variantsJson !== 'string') {
+    return { success: false, error: 'يجب إضافة حجم واحد على الأقل' }
   }
 
-  console.log('[createProduct] Valid units to create:', validatedUnits.length)
+  let variantsData: unknown[]
+  try {
+    variantsData = JSON.parse(variantsJson)
+  } catch {
+    return { success: false, error: 'Invalid variants data' }
+  }
 
-  // Create product and units in a transaction
+  if (!Array.isArray(variantsData) || variantsData.length === 0) {
+    return { success: false, error: 'يجب إضافة حجم واحد على الأقل' }
+  }
+
+  const validatedVariants: Array<{
+    size: string
+    sizeEn?: string
+    sku?: string
+    barcode?: string
+    stock: number
+    minOrderQuantity: number
+    isDefault: boolean
+    isActive: boolean
+    sortOrder: number
+    units: Array<{
+      unit: Unit
+      label: string
+      labelEn?: string
+      piecesPerUnit: number
+      price: number
+      wholesalePrice?: number | null
+      compareAtPrice?: number | null
+      isDefault: boolean
+      sortOrder: number
+    }>
+  }> = []
+
+  for (let i = 0; i < variantsData.length; i++) {
+    const result = productVariantSchema.safeParse(variantsData[i])
+    if (!result.success) {
+      return { success: false, error: `خطأ في بيانات الحجم ${i + 1}: ${result.error.issues[0]?.message}` }
+    }
+    validatedVariants.push({
+      ...result.data,
+      isDefault: result.data.isDefault ?? (i === 0),
+      isActive: result.data.isActive ?? true,
+      sortOrder: result.data.sortOrder ?? i,
+      units: result.data.units.map((u, j) => ({
+        ...u,
+        unit: u.unit as Unit,
+        isDefault: u.isDefault ?? (j === 0),
+        sortOrder: u.sortOrder ?? j,
+      })),
+    })
+  }
+
+  // Create product, variants, and units in a transaction
   const product = await db.$transaction(async (tx) => {
     const p = await tx.product.create({
       data: {
         ...validated.data,
+        supplierId: rawData.supplierId as string | undefined || null,
         image: imagePath,
         isActive: validated.data.isActive ?? true,
       },
     })
 
-    // Create units
-    for (const unitData of validatedUnits) {
-      await tx.productUnit.create({
-        data: {
-          ...unitData,
-          productId: p.id,
-        },
+    for (const variant of validatedVariants) {
+      const { units, ...variantData } = variant
+      const v = await tx.productVariant.create({
+        data: { ...variantData, productId: p.id },
       })
+      for (const unitData of units) {
+        await tx.productUnit.create({
+          data: { ...unitData, variantId: v.id },
+        })
+      }
     }
 
-    console.log(`[createProduct] Product ${p.id} created with ${validatedUnits.length} units`)
     return p
   })
 
@@ -126,7 +135,7 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
   if (!existing) return { success: false, error: 'Product not found' }
 
   const rawData: Record<string, unknown> = {}
-  const fields = ['name', 'nameEn', 'description', 'descriptionEn', 'price', 'compareAtPrice', 'categoryId', 'unit', 'sku', 'barcode', 'stock', 'minOrderQuantity']
+  const fields = ['name', 'nameEn', 'description', 'descriptionEn', 'categoryId']
   
   for (const field of fields) {
     const value = formData.get(field)
@@ -135,6 +144,10 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
     }
   }
   
+  // Handle supplierId (can be empty to remove supplier)
+  const supplierIdValue = formData.get('supplierId')
+  const supplierId = supplierIdValue && supplierIdValue !== '' ? supplierIdValue as string : null
+
   const isActive = formData.get('isActive')
   if (isActive !== null) {
     rawData.isActive = isActive === 'true'
@@ -151,7 +164,6 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
   if (imageFile && imageFile instanceof File && imageFile.size > 0) {
     try {
       imagePath = await saveProductImage(imageFile)
-      // Delete old image
       if (existing.image) {
         await deleteProductImage(existing.image)
       }
@@ -160,77 +172,91 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
     }
   }
 
-  await db.product.update({
-    where: { id },
-    data: {
-      ...validated.data,
-      ...(imagePath ? { image: imagePath } : {}),
-    },
-  })
-
-  // Parse and validate units BEFORE updating
-  const unitsJson = formData.get('units')
-  console.log('[updateProduct] Raw units from formData:', typeof unitsJson, unitsJson ? String(unitsJson).substring(0, 200) : 'NULL')
-  
-  const validatedUnits: Array<{
-    unit: Unit
-    label: string
-    labelEn?: string
-    piecesPerUnit: number
-    price: number
-    compareAtPrice?: number | null
+  // Parse and validate variants
+  const variantsJson = formData.get('variants')
+  let validatedVariants: Array<{
+    size: string
+    sizeEn?: string
+    sku?: string
+    barcode?: string
+    stock: number
+    minOrderQuantity: number
     isDefault: boolean
+    isActive: boolean
     sortOrder: number
-  }> = []
+    units: Array<{
+      unit: Unit
+      label: string
+      labelEn?: string
+      piecesPerUnit: number
+      price: number
+      wholesalePrice?: number | null
+      compareAtPrice?: number | null
+      isDefault: boolean
+      sortOrder: number
+    }>
+  }> | null = null
 
-  if (unitsJson && typeof unitsJson === 'string') {
+  if (variantsJson && typeof variantsJson === 'string') {
+    let variantsData: unknown[]
     try {
-      const unitsData = JSON.parse(unitsJson)
-      console.log('[updateProduct] Parsed units count:', Array.isArray(unitsData) ? unitsData.length : 'NOT_ARRAY')
-      if (Array.isArray(unitsData)) {
-        for (let i = 0; i < unitsData.length; i++) {
-          const unitResult = productUnitSchema.safeParse(unitsData[i])
-          if (unitResult.success) {
-            validatedUnits.push({
-              ...unitResult.data,
-              unit: unitResult.data.unit as Unit,
-              isDefault: unitResult.data.isDefault ?? false,
-              sortOrder: unitResult.data.sortOrder ?? i,
-            })
-          } else {
-            console.error(`[updateProduct] Unit ${i} validation failed:`, JSON.stringify(unitResult.error.issues))
-          }
-        }
+      variantsData = JSON.parse(variantsJson)
+    } catch {
+      return { success: false, error: 'Invalid variants data' }
+    }
+
+    if (!Array.isArray(variantsData) || variantsData.length === 0) {
+      return { success: false, error: 'يجب إضافة حجم واحد على الأقل' }
+    }
+
+    validatedVariants = []
+    for (let i = 0; i < variantsData.length; i++) {
+      const result = productVariantSchema.safeParse(variantsData[i])
+      if (!result.success) {
+        return { success: false, error: `خطأ في بيانات الحجم ${i + 1}: ${result.error.issues[0]?.message}` }
       }
-    } catch (err) {
-      console.error('[updateProduct] Failed to parse units JSON:', err)
+      validatedVariants.push({
+        ...result.data,
+        isDefault: result.data.isDefault ?? (i === 0),
+        isActive: result.data.isActive ?? true,
+        sortOrder: result.data.sortOrder ?? i,
+        units: result.data.units.map((u, j) => ({
+          ...u,
+          unit: u.unit as Unit,
+          isDefault: u.isDefault ?? (j === 0),
+          sortOrder: u.sortOrder ?? j,
+        })),
+      })
     }
   }
 
-  console.log('[updateProduct] Valid units to save:', validatedUnits.length)
-
-  // Update product and units in a transaction
+  // Update product, variants, and units in a transaction
   await db.$transaction(async (tx) => {
     await tx.product.update({
       where: { id },
       data: {
         ...validated.data,
+        supplierId,
         ...(imagePath ? { image: imagePath } : {}),
       },
     })
 
-    // Delete all existing units and recreate
-    await tx.productUnit.deleteMany({ where: { productId: id } })
-    for (const unitData of validatedUnits) {
-      await tx.productUnit.create({
-        data: {
-          ...unitData,
-          productId: id,
-        },
-      })
-    }
+    if (validatedVariants) {
+      // Delete all existing variants (cascades to units)
+      await tx.productVariant.deleteMany({ where: { productId: id } })
 
-    console.log(`[updateProduct] Product ${id} updated with ${validatedUnits.length} units`)
+      for (const variant of validatedVariants) {
+        const { units, ...variantData } = variant
+        const v = await tx.productVariant.create({
+          data: { ...variantData, productId: id },
+        })
+        for (const unitData of units) {
+          await tx.productUnit.create({
+            data: { ...unitData, variantId: v.id },
+          })
+        }
+      }
+    }
   })
 
   revalidatePath('/admin/products')
@@ -293,13 +319,14 @@ export async function reorderProducts(orderedIds: string[]): Promise<ActionRespo
 
 export async function getProducts(options?: {
   categoryId?: string
+  supplierId?: string
   search?: string
   isActive?: boolean
   page?: number
   limit?: number
   includeDescendants?: boolean
 }) {
-  const { categoryId, search, isActive, page = 1, limit = 20 } = options ?? {}
+  const { categoryId, supplierId, search, isActive, page = 1, limit = 20 } = options ?? {}
 
   const where: Record<string, unknown> = {}
   if (categoryId) {
@@ -312,19 +339,27 @@ export async function getProducts(options?: {
       where.categoryId = categoryId
     }
   }
+  if (supplierId) where.supplierId = supplierId
   if (isActive !== undefined) where.isActive = isActive
   if (search) {
     where.OR = [
       { name: { contains: search, mode: 'insensitive' } },
       { nameEn: { contains: search, mode: 'insensitive' } },
-      { sku: { contains: search, mode: 'insensitive' } },
+      { variants: { some: { sku: { contains: search, mode: 'insensitive' } } } },
     ]
   }
 
   const [products, total] = await Promise.all([
     db.product.findMany({
       where,
-      include: { category: true, units: { orderBy: { sortOrder: 'asc' } } },
+      include: {
+        category: true,
+        supplier: true,
+        variants: {
+          orderBy: { sortOrder: 'asc' },
+          include: { units: { orderBy: { sortOrder: 'asc' } } },
+        },
+      },
       orderBy: { sortOrder: 'asc' },
       skip: (page - 1) * limit,
       take: limit,
@@ -339,8 +374,12 @@ export async function getProductById(id: string) {
   return db.product.findUnique({
     where: { id },
     include: { 
-      category: true, 
-      units: { orderBy: { sortOrder: 'asc' } } 
+      category: true,
+      supplier: true,
+      variants: {
+        orderBy: { sortOrder: 'asc' },
+        include: { units: { orderBy: { sortOrder: 'asc' } } },
+      },
     },
   })
 }

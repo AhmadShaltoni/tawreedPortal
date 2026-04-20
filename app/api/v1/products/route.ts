@@ -16,7 +16,10 @@ export async function GET(request: NextRequest) {
   const page = Number(searchParams.get('page')) || 1
   const limit = Math.min(Number(searchParams.get('limit')) || 20, 100)
 
-  const where: Record<string, unknown> = { isActive: true, stock: { gt: 0 } }
+  const where: Record<string, unknown> = {
+    isActive: true,
+    variants: { some: { stock: { gt: 0 }, isActive: true } },
+  }
 
   if (categoryId) {
     if (includeDescendants) {
@@ -51,18 +54,24 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         category: { select: { id: true, name: true, nameEn: true, slug: true } },
-        units: { 
+        variants: {
+          where: { isActive: true, stock: { gt: 0 } },
           orderBy: { sortOrder: 'asc' },
-          select: {
-            id: true,
-            unit: true,
-            label: true,
-            labelEn: true,
-            piecesPerUnit: true,
-            price: true,
-            compareAtPrice: true,
-            isDefault: true,
-            sortOrder: true,
+          include: {
+            units: {
+              orderBy: { sortOrder: 'asc' },
+              select: {
+                id: true,
+                unit: true,
+                label: true,
+                labelEn: true,
+                piecesPerUnit: true,
+                price: true,
+                compareAtPrice: true,
+                isDefault: true,
+                sortOrder: true,
+              },
+            },
           },
         },
       },

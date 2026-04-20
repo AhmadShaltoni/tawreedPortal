@@ -39,6 +39,10 @@ interface Props {
       productName: string
       productNameEn: string | null
       productImage: string | null
+      variantSize: string | null
+      variantSizeEn: string | null
+      unitLabel: string | null
+      unitLabelEn: string | null
       quantity: number
       unit: string
       pricePerUnit: number
@@ -116,7 +120,15 @@ export function OrderDetailClient({ order }: Props) {
                       <p className="font-medium text-gray-900">
                         {lang === 'ar' ? item.productName : (item.productNameEn || item.productName)}
                       </p>
-                      <p className="text-sm text-gray-500">
+                      <div className="text-sm text-gray-600 space-y-0.5">
+                        {item.variantSize && (
+                          <p>{lang === 'ar' ? item.variantSize : (item.variantSizeEn || item.variantSize)}</p>
+                        )}
+                        {item.unitLabel && (
+                          <p>{lang === 'ar' ? item.unitLabel : (item.unitLabelEn || item.unitLabel)}</p>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">
                         {item.quantity} × {formatCurrency(item.pricePerUnit)}
                       </p>
                     </div>

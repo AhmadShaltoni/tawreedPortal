@@ -15,21 +15,31 @@ export async function GET(
   const { id } = await params
 
   const product = await db.product.findUnique({
-    where: { id, isActive: true, stock: { gt: 0 } },
+    where: {
+      id,
+      isActive: true,
+      variants: { some: { stock: { gt: 0 }, isActive: true } },
+    },
     include: {
       category: { select: { id: true, name: true, nameEn: true, slug: true } },
-      units: { 
+      variants: {
+        where: { isActive: true },
         orderBy: { sortOrder: 'asc' },
-        select: {
-          id: true,
-          unit: true,
-          label: true,
-          labelEn: true,
-          piecesPerUnit: true,
-          price: true,
-          compareAtPrice: true,
-          isDefault: true,
-          sortOrder: true,
+        include: {
+          units: {
+            orderBy: { sortOrder: 'asc' },
+            select: {
+              id: true,
+              unit: true,
+              label: true,
+              labelEn: true,
+              piecesPerUnit: true,
+              price: true,
+              compareAtPrice: true,
+              isDefault: true,
+              sortOrder: true,
+            },
+          },
         },
       },
     },

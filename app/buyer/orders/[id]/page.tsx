@@ -66,6 +66,28 @@ export default async function BuyerOrderDetailPage({
                         <p className="font-medium">{order.items[0].productName}</p>
                       </div>
                     </div>
+                    {order.items[0].variantSize && (
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                          <span className="text-indigo-600 font-bold">📦</span>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500">Size</p>
+                          <p className="font-medium">{order.items[0].variantSize}</p>
+                        </div>
+                      </div>
+                    )}
+                    {order.items[0].unitLabel && (
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                          <span className="text-orange-600 font-bold">📏</span>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500">Unit</p>
+                          <p className="font-medium">{order.items[0].unitLabel}</p>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
                         <span className="text-green-600 font-bold">#</span>

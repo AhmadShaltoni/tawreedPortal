@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
   // Get cart items
   const cartItems = await db.cartItem.findMany({
     where: { buyerId: user.id },
-    include: { product: true, productUnit: true },
+    include: { variant: { include: { product: true } }, productUnit: true },
   })
 
   if (cartItems.length === 0) {
@@ -67,17 +67,20 @@ export async function POST(request: NextRequest) {
 
   // Verify stock for all items
   for (const item of cartItems) {
-    if (!item.product.isActive) {
-      return apiError(`Product "${item.product.name}" is no longer available`, 400)
+    if (!item.variant.product.isActive) {
+      return apiError(`Product "${item.variant.product.name}" is no longer available`, 400)
     }
-    if (item.product.stock < item.quantity) {
-      return apiError(`Insufficient stock for "${item.product.name}". Available: ${item.product.stock}`, 400)
+    if (!item.variant.isActive) {
+      return apiError(`Variant "${item.variant.size}" is no longer available`, 400)
+    }
+    if (item.variant.stock < item.quantity) {
+      return apiError(`Insufficient stock for "${item.variant.product.name} - ${item.variant.size}". Available: ${item.variant.stock}`, 400)
     }
   }
 
   // Calculate total (using selected unit price if available)
   const totalPrice = cartItems.reduce((sum, item) => {
-    const unitPrice = item.productUnit?.price ?? item.product.price
+    const unitPrice = item.productUnit?.price ?? 0
     return sum + unitPrice * item.quantity
   }, 0)
 
@@ -143,16 +146,18 @@ export async function POST(request: NextRequest) {
         ],
         items: {
           create: cartItems.map((item) => {
-            const unitPrice = item.productUnit?.price ?? item.product.price
-            const unit = item.productUnit?.unit ?? item.product.unit
+            const unitPrice = item.productUnit?.price ?? 0
+            const unit = item.productUnit?.unit ?? 'PIECE'
             const piecesPerUnit = item.productUnit?.piecesPerUnit ?? 1
             const unitLabel = item.productUnit?.label ?? null
             const unitLabelEn = item.productUnit?.labelEn ?? null
             return {
-              productId: item.product.id,
-              productName: item.product.name,
-              productNameEn: item.product.nameEn,
-              productImage: item.product.image,
+              productId: item.variant.product.id,
+              productName: item.variant.product.name,
+              productNameEn: item.variant.product.nameEn,
+              productImage: item.variant.product.image,
+              variantSize: item.variant.size,
+              variantSizeEn: item.variant.sizeEn,
               quantity: item.quantity,
               unit,
               pricePerUnit: unitPrice,
@@ -167,10 +172,10 @@ export async function POST(request: NextRequest) {
       include: { items: true },
     })
 
-    // Decrease stock
+    // Decrease stock on variant level
     for (const item of cartItems) {
-      await tx.product.update({
-        where: { id: item.product.id },
+      await tx.productVariant.update({
+        where: { id: item.variantId },
         data: { stock: { decrement: item.quantity } },
       })
     }

@@ -25,20 +25,32 @@ interface Props {
     id: string
     name: string
     nameEn: string | null
-    price: number
-    stock: number
     image: string | null
     isActive: boolean
     sortOrder: number
     category: { id: string; name: string; nameEn: string | null }
+    supplier: { id: string; name: string; nameEn: string | null } | null
+    variants: Array<{
+      id: string
+      size: string
+      sizeEn: string | null
+      stock: number
+      isDefault: boolean
+      units: Array<{
+        price: number
+        isDefault: boolean
+      }>
+    }>
   }>
   categories: Array<{ id: string; name: string; nameEn: string | null; slug: string }>
   categoryTree: CategoryNode[]
+  suppliers: Array<{ id: string; name: string; nameEn: string | null; isDefault: boolean }>
   total: number
   pages: number
   currentPage: number
   currentCategory?: string
   currentSearch?: string
+  currentSupplier?: string
 }
 
 function flattenCategoryTree(nodes: CategoryNode[], lang: string, prefix = ''): { value: string; label: string }[] {
@@ -58,11 +70,13 @@ export function ProductListClient({
   products,
   categories,
   categoryTree,
+  suppliers,
   total,
   pages,
   currentPage,
   currentCategory,
   currentSearch,
+  currentSupplier,
 }: Props) {
   const { t, dir, lang } = useLanguage()
   const router = useRouter()
@@ -89,12 +103,22 @@ export function ProductListClient({
     const params = new URLSearchParams()
     if (search) params.set('search', search)
     if (currentCategory) params.set('category', currentCategory)
+    if (currentSupplier) params.set('supplier', currentSupplier)
     router.push(`/admin/products?${params.toString()}`)
   }
 
   function handleCategoryFilter(categoryId: string) {
     const params = new URLSearchParams()
     if (categoryId) params.set('category', categoryId)
+    if (currentSearch) params.set('search', currentSearch)
+    if (currentSupplier) params.set('supplier', currentSupplier)
+    router.push(`/admin/products?${params.toString()}`)
+  }
+
+  function handleSupplierFilter(supplierId: string) {
+    const params = new URLSearchParams()
+    if (supplierId) params.set('supplier', supplierId)
+    if (currentCategory) params.set('category', currentCategory)
     if (currentSearch) params.set('search', currentSearch)
     router.push(`/admin/products?${params.toString()}`)
   }
@@ -222,6 +246,22 @@ export function ProductListClient({
                 </option>
               ))}
             </select>
+
+            {/* Supplier filter */}
+            {suppliers.length > 0 && (
+              <select
+                value={currentSupplier || ''}
+                onChange={(e) => handleSupplierFilter(e.target.value)}
+                className="border border-gray-300 rounded-lg py-2 px-3 min-w-[160px]"
+              >
+                <option value="">{t.supplierManagement?.allSuppliers || 'جميع الموردين'}</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {lang === 'ar' ? s.name : (s.nameEn || s.name)}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -246,6 +286,8 @@ export function ProductListClient({
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.productManagement.image}</th>
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.productManagement.productName}</th>
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.productManagement.category}</th>
+                      <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.supplierManagement?.supplier || 'المورد'}</th>
+                      <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.productManagement.variants}</th>
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.productManagement.price}</th>
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.productManagement.stock}</th>
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.userManagement.status}</th>
@@ -268,7 +310,7 @@ export function ProductListClient({
                             ? 'opacity-50'
                             : dragOverId === product.id && draggedId
                               ? 'bg-blue-50 border-t-2 border-t-blue-400'
-                              : product.stock <= 0
+                              : product.variants.reduce((s, v) => s + v.stock, 0) <= 0
                                 ? 'bg-red-50 hover:bg-red-100'
                                 : 'hover:bg-gray-50'
                         }`}
@@ -295,13 +337,34 @@ export function ProductListClient({
                         <td className="py-3 text-gray-600">
                           {lang === 'ar' ? product.category.name : (product.category.nameEn || product.category.name)}
                         </td>
+                        <td className="py-3 text-gray-600 text-xs">
+                          {product.supplier
+                            ? (lang === 'ar' ? product.supplier.name : (product.supplier.nameEn || product.supplier.name))
+                            : <span className="text-gray-400">—</span>
+                          }
+                        </td>
+                        <td className="py-3 text-gray-600 text-xs">
+                          {product.variants.length > 0 ? (
+                            <span className="inline-flex items-center gap-1">
+                              <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">{product.variants.length}</span>
+                              <span>{product.variants.map(v => lang === 'ar' ? v.size : (v.sizeEn || v.size)).join(', ')}</span>
+                            </span>
+                          ) : '—'}
+                        </td>
                         <td className="py-3 font-medium text-gray-900">
-                          {formatCurrency(product.price)}
+                          {(() => {
+                            const allPrices = product.variants.flatMap(v => v.units.map(u => u.price))
+                            if (allPrices.length === 0) return '—'
+                            const min = Math.min(...allPrices)
+                            const max = Math.max(...allPrices)
+                            return min === max ? formatCurrency(min) : `${formatCurrency(min)} - ${formatCurrency(max)}`
+                          })()}
                         </td>
                         <td className="py-3">
-                          <span className={product.stock <= 0 ? 'text-red-600 font-medium' : 'text-gray-700'}>
-                            {product.stock}
-                          </span>
+                          {(() => {
+                            const totalStock = product.variants.reduce((s, v) => s + v.stock, 0)
+                            return <span className={totalStock <= 0 ? 'text-red-600 font-medium' : 'text-gray-700'}>{totalStock}</span>
+                          })()}
                         </td>
                         <td className="py-3">
                           <Badge status={product.isActive ? 'active' : 'inactive'}>

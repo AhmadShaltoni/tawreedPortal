@@ -3,13 +3,13 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { Plus, Search } from 'lucide-react'
+import { Plus, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { useLanguage } from '@/lib/LanguageContext'
 import { formatDate } from '@/lib/utils'
-import { toggleUserActive } from '@/actions/users'
+import { toggleUserActive, deleteUser } from '@/actions/users'
 
 interface Props {
   users: Array<{
@@ -35,6 +35,8 @@ export function UserListClient({ users, total, pages, currentPage, currentRole, 
   const { t, dir } = useLanguage()
   const router = useRouter()
   const [search, setSearch] = useState(currentSearch || '')
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -53,6 +55,19 @@ export function UserListClient({ users, total, pages, currentPage, currentRole, 
 
   async function handleToggleActive(id: string) {
     await toggleUserActive(id)
+  }
+
+  async function handleDeleteUser(id: string) {
+    setDeleting(true)
+    const response = await deleteUser(id)
+    setDeleting(false)
+    setDeleteConfirm(null)
+
+    if (response.success) {
+      router.refresh()
+    } else {
+      alert(response.error || t.userManagement.deleteError)
+    }
   }
 
   return (
@@ -140,9 +155,21 @@ export function UserListClient({ users, total, pages, currentPage, currentRole, 
                           </Badge>
                         </td>
                         <td className="py-3">
-                          <Button variant="ghost" size="sm" onClick={() => handleToggleActive(user.id)}>
-                            {user.isActive ? t.userManagement.inactive : t.userManagement.active}
-                          </Button>
+                          <div className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                            <Button variant="ghost" size="sm" onClick={() => handleToggleActive(user.id)}>
+                              {user.isActive ? t.userManagement.inactive : t.userManagement.active}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setDeleteConfirm(user.id)}
+                              className="text-red-600 hover:bg-red-50"
+                              disabled={deleting}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              {t.userManagement.delete}
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -168,6 +195,43 @@ export function UserListClient({ users, total, pages, currentPage, currentRole, 
           )}
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-96">
+            <CardContent className="p-6">
+              <h2 className={`text-lg font-bold mb-2 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
+                {t.userManagement.deleteUser}
+              </h2>
+              <p className={`text-gray-600 mb-2 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
+                {t.userManagement.deleteConfirm}
+              </p>
+              <p className={`text-sm text-red-600 mb-6 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
+                {t.userManagement.deleteWarning}
+              </p>
+              <div className={`flex gap-3 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                <Button
+                  variant="ghost"
+                  onClick={() => setDeleteConfirm(null)}
+                  disabled={deleting}
+                  className="flex-1"
+                >
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => handleDeleteUser(deleteConfirm)}
+                  disabled={deleting}
+                  className="flex-1 bg-red-600 hover:bg-red-700"
+                >
+                  {deleting ? t.common.deleting : t.userManagement.delete}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }

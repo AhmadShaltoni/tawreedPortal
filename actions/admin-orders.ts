@@ -137,3 +137,80 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
     totalCategories,
   }
 }
+
+export async function getRevenueReportData(options: {
+  from: string // ISO date string
+  to: string   // ISO date string
+}) {
+  const { authorized, error } = await requireRole(['ADMIN'])
+  if (!authorized) throw new Error(error ?? 'Not authorized')
+
+  const from = new Date(options.from)
+  const to = new Date(options.to)
+  // Set end of day for the "to" date
+  to.setHours(23, 59, 59, 999)
+
+  const orders = await db.order.findMany({
+    where: {
+      createdAt: { gte: from, lte: to },
+      status: { not: 'CANCELLED' },
+    },
+    include: {
+      buyer: { select: { username: true, storeName: true } },
+      items: {
+        include: {
+          product: {
+            include: {
+              variants: {
+                include: { units: true },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  // Calculate profit per order
+  const ordersWithProfit = orders.map((order) => {
+    let orderProfit = 0
+
+    for (const item of order.items) {
+      let wholesalePrice: number | null = null
+
+      // Try to find the matching ProductUnit's wholesalePrice
+      if (item.product?.variants) {
+        for (const variant of item.product.variants) {
+          for (const pu of variant.units) {
+            if (pu.unit === item.unit) {
+              wholesalePrice = pu.wholesalePrice
+              break
+            }
+          }
+          if (wholesalePrice !== null) break
+        }
+      }
+
+      if (wholesalePrice != null && wholesalePrice > 0) {
+        orderProfit += (item.pricePerUnit - wholesalePrice) * item.quantity
+      }
+      // If wholesalePrice is null/missing, profit is 0 for this item
+    }
+
+    return {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      createdAt: order.createdAt,
+      status: order.status,
+      totalPrice: order.totalPrice,
+      customerName: order.buyer.storeName || order.buyer.username,
+      profit: orderProfit,
+    }
+  })
+
+  const totalRevenue = ordersWithProfit.reduce((sum, o) => sum + o.totalPrice, 0)
+  const totalProfit = ordersWithProfit.reduce((sum, o) => sum + o.profit, 0)
+
+  return { orders: ordersWithProfit, totalRevenue, totalProfit }
+}

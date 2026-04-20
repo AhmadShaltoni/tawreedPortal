@@ -91,9 +91,24 @@ export const productUnitSchema = z.object({
   labelEn: z.string().optional(),
   piecesPerUnit: z.coerce.number().int().positive('Pieces per unit must be at least 1'),
   price: z.coerce.number().positive('Price must be positive'),
+  wholesalePrice: z.coerce.number().positive().optional().nullable(),
   compareAtPrice: z.coerce.number().positive().optional().nullable(),
   isDefault: z.coerce.boolean().optional(),
   sortOrder: z.coerce.number().int().optional(),
+})
+
+// Product variant validation (size variant with its own stock/SKU)
+export const productVariantSchema = z.object({
+  size: z.string().min(1, 'Size is required'),
+  sizeEn: z.string().optional(),
+  sku: z.string().optional(),
+  barcode: z.string().optional(),
+  stock: z.coerce.number().int().min(0, 'Stock must be 0 or more'),
+  minOrderQuantity: z.coerce.number().int().positive('Minimum order must be at least 1'),
+  isDefault: z.coerce.boolean().optional(),
+  isActive: z.coerce.boolean().optional(),
+  sortOrder: z.coerce.number().int().optional(),
+  units: z.array(productUnitSchema).min(1, 'At least one selling unit is required'),
 })
 
 // Product validations
@@ -102,15 +117,7 @@ export const createProductSchema = z.object({
   nameEn: z.string().optional(),
   description: z.string().optional(),
   descriptionEn: z.string().optional(),
-  price: z.coerce.number().positive('Price must be positive'),
-  compareAtPrice: z.coerce.number().positive().optional(),
   categoryId: z.string().min(1, 'Category is required'),
-  unit: z.enum(['KG', 'GRAM', 'LITER', 'PIECE', 'PACK', 'BOX', 'CARTON', 'DOZEN', 'PALLET']),
-  sku: z.string().optional(),
-  barcode: z.string().optional(),
-  stock: z.coerce.number().int().positive('المخزون يجب أن يكون أكبر من صفر'),
-
-  minOrderQuantity: z.coerce.number().int().positive('Minimum order must be at least 1'),
   isActive: z.coerce.boolean().optional(),
 })
 
@@ -150,7 +157,7 @@ export const adminCreateUserSchema = z.object({
 
 // Cart validations
 export const addToCartSchema = z.object({
-  productId: z.string().min(1, 'Product ID is required'),
+  variantId: z.string().min(1, 'Variant ID is required'),
   quantity: z.coerce.number().int().positive('Quantity must be at least 1'),
   productUnitId: z.string().optional(),
 })
