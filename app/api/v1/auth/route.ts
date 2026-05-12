@@ -54,23 +54,14 @@ async function handleLogin(body: Record<string, unknown>) {
       return apiError("رقم الهاتف أو كلمة المرور غير صحيحة", 401);
     }
 
-    // Register device token if provided
+    // Register/relink device token if provided
     if (body.deviceToken && body.platform) {
       const platform = body.platform as string;
       if (['IOS', 'ANDROID'].includes(platform)) {
         try {
-          // Check if token already exists for another user
-          const existingToken = await db.deviceToken.findUnique({
-            where: { token: body.deviceToken as string },
-          });
-
-          if (existingToken && existingToken.userId !== user.id) {
-            await db.deviceToken.delete({
-              where: { id: existingToken.id },
-            });
-          }
-
-          // Upsert device token
+          // Upsert device token — links (or re-links) token to this user.
+          // If the token was anonymous (userId=null) or belonged to another user,
+          // it gets reassigned to the current user.
           await db.deviceToken.upsert({
             where: { token: body.deviceToken as string },
             update: {
@@ -164,13 +155,20 @@ async function handleRegister(body: Record<string, unknown>) {
       },
     });
 
-    // Register device token if provided
+    // Register/relink device token if provided
     if (body.deviceToken && body.platform) {
       const platform = body.platform as string;
       if (['IOS', 'ANDROID'].includes(platform)) {
         try {
-          await db.deviceToken.create({
-            data: {
+          // Upsert — if token existed anonymously, link it to the new user
+          await db.deviceToken.upsert({
+            where: { token: body.deviceToken as string },
+            update: {
+              userId: user.id,
+              isActive: true,
+              updatedAt: new Date(),
+            },
+            create: {
               token: body.deviceToken as string,
               platform: platform as 'IOS' | 'ANDROID',
               userId: user.id,

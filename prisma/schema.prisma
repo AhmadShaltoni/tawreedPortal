@@ -544,6 +544,8 @@ model Notice {
 }
 
 // Device tokens for push notifications
+// Token represents a device/app installation, NOT an authenticated session.
+// userId is nullable — anonymous devices can still receive broadcast/marketing push.
 model DeviceToken {
   id            String    @id @default(cuid())
   token         String    @unique  // FCM or Expo token
@@ -554,9 +556,9 @@ model DeviceToken {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   
-  // Relations
-  userId        String
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Relations — userId is optional (null = anonymous/logged-out device)
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   
   @@index([userId])
   @@index([isActive])

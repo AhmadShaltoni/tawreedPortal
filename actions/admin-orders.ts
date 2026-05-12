@@ -3,6 +3,7 @@
 import { db } from '@/lib/db'
 import { requireRole } from '@/lib/auth'
 import { updateOrderStatusSchema } from '@/lib/validations'
+import { createAndSendNotification } from '@/lib/push-notifications'
 import type { ActionResponse, AdminDashboardStats } from '@/types'
 import { revalidatePath } from 'next/cache'
 
@@ -86,14 +87,16 @@ export async function updateAdminOrderStatus(formData: FormData): Promise<Action
     },
   })
 
-  // Notify buyer
-  await db.notification.create({
+  // Notify buyer with push notification
+  await createAndSendNotification(order.buyerId, {
+    type: 'ORDER_STATUS_CHANGE',
+    title: 'تحديث حالة الطلب',
+    message: `تم تحديث حالة طلبك #${order.orderNumber} إلى ${validated.data.status}`,
+    linkUrl: `/orders/${order.id}`,
     data: {
-      type: 'ORDER_STATUS_CHANGE',
-      title: 'تحديث حالة الطلب',
-      message: `تم تحديث حالة طلبك #${order.orderNumber} إلى ${validated.data.status}`,
-      linkUrl: `/orders/${order.id}`,
-      userId: order.buyerId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      status: validated.data.status,
     },
   })
 

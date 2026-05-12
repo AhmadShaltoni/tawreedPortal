@@ -8,10 +8,12 @@ export async function OPTIONS() {
   return corsOptions()
 }
 
-// POST /api/v1/notifications/device-token - Register or update device token
+// POST /api/v1/notifications/device-token - Register or link device token
+// If authenticated: links token to user (upsert)
+// If not authenticated: registers anonymous token (for broadcast/marketing push)
 export async function POST(request: NextRequest) {
-  const { user, error } = await authenticateApiRequest(request)
-  if (!user) return apiError(error ?? 'Unauthorized', 401)
+  // Try to authenticate, but don't fail if no auth — allow anonymous registration
+  const { user } = await authenticateApiRequest(request).catch(() => ({ user: null, error: null }))
 
   try {
     const body = await request.json()
@@ -29,51 +31,75 @@ export async function POST(request: NextRequest) {
 
     const { token, platform } = validated.data
 
-    // Check if token already exists for another user (shouldn't happen but safety check)
-    const existingToken = await db.deviceToken.findUnique({
-      where: { token },
-    })
-
-    if (existingToken && existingToken.userId !== user.id) {
-      // Token is registered to another user, remove from old user
-      await db.deviceToken.delete({
-        where: { id: existingToken.id },
-      })
-    }
-
-    // Upsert device token (update if exists, create if not)
-    const deviceToken = await db.deviceToken.upsert({
-      where: { token },
-      update: {
-        isActive: true,
-        updatedAt: new Date(),
-      },
-      create: {
-        token,
-        platform: platform as 'IOS' | 'ANDROID',
-        userId: user.id,
-        isActive: true,
-      },
-    })
-
-    return apiResponse(
-      {
-        message: 'Device token registered successfully',
-        deviceToken: {
-          id: deviceToken.id,
-          platform: deviceToken.platform,
-          isActive: deviceToken.isActive,
+    if (user) {
+      // Authenticated: link token to this user
+      // If token exists for another user, reassign it (device changed user)
+      const deviceToken = await db.deviceToken.upsert({
+        where: { token },
+        update: {
+          userId: user.id,
+          isActive: true,
+          updatedAt: new Date(),
         },
-      },
-      201
-    )
+        create: {
+          token,
+          platform: platform as 'IOS' | 'ANDROID',
+          userId: user.id,
+          isActive: true,
+        },
+      })
+
+      return apiResponse(
+        {
+          message: 'Device token registered successfully',
+          deviceToken: {
+            id: deviceToken.id,
+            platform: deviceToken.platform,
+            isActive: deviceToken.isActive,
+            linked: true,
+          },
+        },
+        201
+      )
+    } else {
+      // Anonymous: register token without user linkage (for broadcast/marketing)
+      const deviceToken = await db.deviceToken.upsert({
+        where: { token },
+        update: {
+          isActive: true,
+          updatedAt: new Date(),
+          // Do NOT change userId — preserve existing link if any
+        },
+        create: {
+          token,
+          platform: platform as 'IOS' | 'ANDROID',
+          // userId is null — anonymous device
+          isActive: true,
+        },
+      })
+
+      return apiResponse(
+        {
+          message: 'Device token registered successfully',
+          deviceToken: {
+            id: deviceToken.id,
+            platform: deviceToken.platform,
+            isActive: deviceToken.isActive,
+            linked: !!deviceToken.userId,
+          },
+        },
+        201
+      )
+    }
   } catch (error) {
     console.error('Device token registration error:', error)
     return apiError('Internal server error', 500)
   }
 }
 
-// DELETE /api/v1/notifications/device-token - Unregister device token
+// DELETE /api/v1/notifications/device-token - Unlink token from user (on logout)
+// Does NOT delete the token — keeps it active for broadcast/marketing push.
+// Sets userId to null so the device remains reachable for announcements.
 export async function DELETE(request: NextRequest) {
   const { user, error } = await authenticateApiRequest(request)
   if (!user) return apiError(error ?? 'Unauthorized', 401)
@@ -93,7 +119,7 @@ export async function DELETE(request: NextRequest) {
 
     const { token } = validated.data
 
-    // Find and delete the token (but only if it belongs to current user)
+    // Find the token
     const deviceToken = await db.deviceToken.findUnique({
       where: { token },
     })
@@ -106,15 +132,17 @@ export async function DELETE(request: NextRequest) {
       return apiError('Unauthorized', 403)
     }
 
-    await db.deviceToken.delete({
+    // Unlink from user instead of deleting — token stays active for broadcasts
+    await db.deviceToken.update({
       where: { token },
+      data: { userId: null },
     })
 
     return apiResponse({
-      message: 'Device token unregistered successfully',
+      message: 'Device token unlinked successfully',
     })
   } catch (error) {
-    console.error('Device token deletion error:', error)
+    console.error('Device token unlink error:', error)
     return apiError('Internal server error', 500)
   }
 }

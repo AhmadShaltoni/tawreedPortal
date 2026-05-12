@@ -3,6 +3,7 @@
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { createOfferSchema } from '@/lib/validations'
+import { createAndSendNotification } from '@/lib/push-notifications'
 import type { ActionResponse, OfferWithRequest } from '@/types'
 import { revalidatePath } from 'next/cache'
 
@@ -81,14 +82,15 @@ export async function createOffer(formData: FormData): Promise<ActionResponse<{ 
     data: { status: 'IN_PROGRESS' },
   })
 
-  // Create notification for buyer
-  await db.notification.create({
+  // Create notification for buyer and send push
+  await createAndSendNotification(request.buyerId, {
+    type: 'NEW_OFFER',
+    title: 'New Offer Received',
+    message: `You received a new offer for "${request.title}"`,
+    linkUrl: `/buyer/requests/${request.id}`,
     data: {
-      userId: request.buyerId,
-      type: 'NEW_OFFER',
-      title: 'New Offer Received',
-      message: `You received a new offer for "${request.title}"`,
-      linkUrl: `/buyer/requests/${request.id}`,
+      requestId: request.id,
+      offerId: offer.id,
     },
   })
 
@@ -193,14 +195,15 @@ export async function acceptOffer(offerId: string): Promise<ActionResponse> {
     },
   })
 
-  // Notify supplier
-  await db.notification.create({
+  // Notify supplier with push
+  await createAndSendNotification(offer.supplierId, {
+    type: 'OFFER_ACCEPTED',
+    title: 'Offer Accepted!',
+    message: `Your offer for "${offer.request.title}" has been accepted`,
+    linkUrl: `/supplier/orders/${order.id}`,
     data: {
-      userId: offer.supplierId,
-      type: 'OFFER_ACCEPTED',
-      title: 'Offer Accepted!',
-      message: `Your offer for "${offer.request.title}" has been accepted`,
-      linkUrl: `/supplier/orders/${order.id}`,
+      orderId: order.id,
+      offerId: offer.id,
     },
   })
 
@@ -241,14 +244,14 @@ export async function rejectOffer(offerId: string): Promise<ActionResponse> {
     data: { status: 'REJECTED' },
   })
 
-  // Notify supplier
-  await db.notification.create({
+  // Notify supplier with push
+  await createAndSendNotification(offer.supplierId, {
+    type: 'OFFER_REJECTED',
+    title: 'Offer Rejected',
+    message: `Your offer for "${offer.request.title}" was not accepted`,
+    linkUrl: `/supplier/offers`,
     data: {
-      userId: offer.supplierId,
-      type: 'OFFER_REJECTED',
-      title: 'Offer Rejected',
-      message: `Your offer for "${offer.request.title}" was not accepted`,
-      linkUrl: `/supplier/offers`,
+      offerId: offer.id,
     },
   })
 

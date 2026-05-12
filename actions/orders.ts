@@ -3,6 +3,7 @@
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { updateOrderStatusSchema } from '@/lib/validations'
+import { createAndSendNotification } from '@/lib/push-notifications'
 import type { ActionResponse, OrderWithRelations, OrderStatus } from '@/types'
 import { revalidatePath } from 'next/cache'
 
@@ -157,15 +158,17 @@ export async function updateOrderStatus(formData: FormData): Promise<ActionRespo
   }
 
   if (notifyUserId) {
-    await db.notification.create({
+    await createAndSendNotification(notifyUserId, {
+      type: 'ORDER_UPDATE',
+      title: 'Order Status Updated',
+      message: `Order #${order.orderNumber.slice(-8)} is now ${validated.data.status.toLowerCase()}`,
+      linkUrl: user.role === 'SUPPLIER' 
+        ? `/buyer/orders/${order.id}` 
+        : `/supplier/orders/${order.id}`,
       data: {
-        userId: notifyUserId,
-        type: 'ORDER_UPDATE',
-        title: 'Order Status Updated',
-        message: `Order #${order.orderNumber.slice(-8)} is now ${validated.data.status.toLowerCase()}`,
-        linkUrl: user.role === 'SUPPLIER' 
-          ? `/buyer/orders/${order.id}` 
-          : `/supplier/orders/${order.id}`,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        status: validated.data.status,
       },
     })
   }

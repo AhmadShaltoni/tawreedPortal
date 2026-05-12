@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
 import { createOrderFromCartSchema } from '@/lib/validations'
+import { sendPushToRole } from '@/lib/push-notifications'
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -212,6 +213,18 @@ export async function POST(request: NextRequest) {
 
     return newOrder
   })
+
+  // Send push notification to admins (outside transaction)
+  sendPushToRole('ADMIN', {
+    title: 'طلب جديد',
+    body: `طلب جديد #${order.orderNumber.slice(-8)} بقيمة ${totalPrice} د.أ`,
+    data: {
+      type: 'NEW_ORDER',
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      linkUrl: `/admin/orders/${order.id}`,
+    },
+  }).catch((err) => console.error('Failed to send new order push to admins:', err))
 
   return apiResponse({
     order,

@@ -2,6 +2,7 @@
 
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
+import { sendPushToUser, sendPushToAll, sendPushToRole, sendPushToAuthenticated, getPushStats, cleanupStaleTokens } from '@/lib/push-notifications'
 import type { UserRole } from '@prisma/client'
 
 export interface ActionResponse<T = unknown> {
@@ -83,7 +84,7 @@ export async function getNotifications(
 }
 
 /**
- * Get notification statistics
+ * Get notification statistics (includes push delivery stats)
  */
 export async function getNotificationStats(): Promise<ActionResponse> {
   try {
@@ -92,7 +93,7 @@ export async function getNotificationStats(): Promise<ActionResponse> {
       return { success: false, error: 'Unauthorized' }
     }
 
-    const [total, sent, unread, byType] = await Promise.all([
+    const [total, sent, unread, byType, pushStats] = await Promise.all([
       db.notification.count(),
       db.notification.count({ where: { isSent: true } }),
       db.notification.count({ where: { isRead: false } }),
@@ -100,6 +101,7 @@ export async function getNotificationStats(): Promise<ActionResponse> {
         by: ['type'],
         _count: true,
       }),
+      getPushStats(),
     ])
 
     return {
@@ -111,6 +113,7 @@ export async function getNotificationStats(): Promise<ActionResponse> {
         byType: Object.fromEntries(
           byType.map((item) => [item.type, item._count])
         ),
+        push: pushStats,
       },
     }
   } catch (error) {
@@ -196,10 +199,52 @@ export async function sendNotification(formData: FormData): Promise<ActionRespon
       })),
     })
 
-    // Try to send push if Firebase is configured
-    // (This will be done asynchronously in production)
+    // Send actual push notifications via Firebase
+    const pushPayload = {
+      title,
+      body: message,
+      imageUrl: imageUrl || undefined,
+      data: {
+        type: 'SYSTEM',
+        ...(linkUrl ? { linkUrl } : {}),
+      },
+    }
+
+    let pushSuccess = false
+
+    try {
+      if (recipientType === 'all') {
+        const result = await sendPushToAll(pushPayload)
+        pushSuccess = !!(result && result.successCount > 0)
+      } else if (recipientType === 'buyers') {
+        const result = await sendPushToRole('BUYER', pushPayload)
+        pushSuccess = !!(result && result.successCount > 0)
+      } else if (recipientType === 'suppliers') {
+        const result = await sendPushToRole('SUPPLIER', pushPayload)
+        pushSuccess = !!(result && result.successCount > 0)
+      } else if (recipientType === 'specific' && specificUserId) {
+        const result = await sendPushToUser(specificUserId, pushPayload)
+        pushSuccess = !!(result && result.successCount > 0)
+      }
+    } catch (pushError) {
+      console.error('Push notification delivery error:', pushError)
+    }
+
+    // Mark notifications as sent if push was successful
+    if (pushSuccess) {
+      await db.notification.updateMany({
+        where: {
+          userId: { in: recipientIds },
+          type: 'SYSTEM',
+          title,
+          isSent: false,
+        },
+        data: { isSent: true },
+      })
+    }
+
     console.log(
-      `Created ${notifications.count} notifications for ${recipientType}`
+      `Created ${notifications.count} notifications for ${recipientType}, push sent: ${pushSuccess}`
     )
 
     return {
@@ -308,5 +353,28 @@ export async function markNotificationAsRead(
   } catch (error) {
     console.error('Error marking notification as read:', error)
     return { success: false, error: 'Failed to mark notification as read' }
+  }
+}
+
+/**
+ * Cleanup stale/inactive device tokens (admin only)
+ */
+export async function cleanupDeviceTokens(staleDays = 90): Promise<ActionResponse> {
+  try {
+    const user = await getCurrentUser()
+    if (!user || user.role !== 'ADMIN') {
+      return { success: false, error: 'Unauthorized' }
+    }
+
+    const result = await cleanupStaleTokens(staleDays)
+
+    return {
+      success: true,
+      message: `Cleaned up ${result.deletedInactive} inactive and ${result.deactivatedStale} stale tokens`,
+      data: result,
+    }
+  } catch (error) {
+    console.error('Error cleaning up device tokens:', error)
+    return { success: false, error: 'Failed to cleanup tokens' }
   }
 }
