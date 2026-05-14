@@ -2,7 +2,7 @@
 
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
-import { sendPushToUser, sendPushToAll, sendPushToRole, sendPushToAuthenticated, getPushStats, cleanupStaleTokens } from '@/lib/push-notifications'
+import { sendPushToUser, sendPushToAll, sendPushToRole, getPushStats, cleanupStaleTokens } from '@/lib/push-notifications'
 import type { UserRole } from '@prisma/client'
 
 export interface ActionResponse<T = unknown> {
@@ -11,6 +11,38 @@ export interface ActionResponse<T = unknown> {
   data?: T
   error?: string
   errors?: Record<string, string[]>
+}
+
+function getPushPayloadDebugInfo(payload: {
+  title: string
+  body: string
+  imageUrl?: string
+  data?: Record<string, string>
+}) {
+  return {
+    notification: {
+      title: payload.title,
+      body: payload.body,
+      ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
+    },
+    data: payload.data || {},
+    hasNotificationTitle: Boolean(payload.title?.trim()),
+    hasNotificationBody: Boolean(payload.body?.trim()),
+    hasNotificationTitleAndBody: Boolean(payload.title?.trim() && payload.body?.trim()),
+    hasDataPayload: Boolean(payload.data && Object.keys(payload.data).length > 0),
+  }
+}
+
+function getPushErrorDebugInfo(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      code: 'code' in error ? (error as { code?: unknown }).code : undefined,
+    }
+  }
+
+  return error
 }
 
 /**
@@ -139,6 +171,16 @@ export async function sendNotification(formData: FormData): Promise<ActionRespon
     const recipientType = formData.get('recipientType') as string // 'all' | 'buyers' | 'suppliers' | 'specific'
     const specificUserId = formData.get('specificUserId') as string | null
 
+    console.log('[Push] sendNotification requested', {
+      adminUserId: user.id,
+      recipientType,
+      specificUserId: specificUserId || undefined,
+      hasLinkUrl: Boolean(linkUrl),
+      hasImageUrl: Boolean(imageUrl),
+      titleLength: title?.length || 0,
+      messageLength: message?.length || 0,
+    })
+
     // Validate
     if (!title?.trim() || !message?.trim()) {
       return {
@@ -181,6 +223,11 @@ export async function sendNotification(formData: FormData): Promise<ActionRespon
       recipientIds = allUsers.map((u) => u.id)
     }
 
+    console.log('[Push] sendNotification recipients resolved', {
+      recipientType,
+      recipientCount: recipientIds.length,
+    })
+
     if (recipientIds.length === 0) {
       return { success: false, error: 'No recipients found' }
     }
@@ -199,6 +246,11 @@ export async function sendNotification(formData: FormData): Promise<ActionRespon
       })),
     })
 
+    console.log('[Push] sendNotification DB records created', {
+      recipientType,
+      notificationRecordCount: notifications.count,
+    })
+
     // Send actual push notifications via Firebase
     const pushPayload = {
       title,
@@ -211,23 +263,48 @@ export async function sendNotification(formData: FormData): Promise<ActionRespon
     }
 
     let pushSuccess = false
+    let pushResult:
+      | {
+          successCount: number
+          failureCount: number
+          failedTokens: string[]
+        }
+      | null = null
+
+    console.log('[Push] Sending notification', {
+      source: 'sendNotification',
+      recipientType,
+      payload: getPushPayloadDebugInfo(pushPayload),
+    })
 
     try {
       if (recipientType === 'all') {
-        const result = await sendPushToAll(pushPayload)
-        pushSuccess = !!(result && result.successCount > 0)
+        pushResult = await sendPushToAll(pushPayload)
+        pushSuccess = !!(pushResult && pushResult.successCount > 0)
       } else if (recipientType === 'buyers') {
-        const result = await sendPushToRole('BUYER', pushPayload)
-        pushSuccess = !!(result && result.successCount > 0)
+        pushResult = await sendPushToRole('BUYER', pushPayload)
+        pushSuccess = !!(pushResult && pushResult.successCount > 0)
       } else if (recipientType === 'suppliers') {
-        const result = await sendPushToRole('SUPPLIER', pushPayload)
-        pushSuccess = !!(result && result.successCount > 0)
+        pushResult = await sendPushToRole('SUPPLIER', pushPayload)
+        pushSuccess = !!(pushResult && pushResult.successCount > 0)
       } else if (recipientType === 'specific' && specificUserId) {
-        const result = await sendPushToUser(specificUserId, pushPayload)
-        pushSuccess = !!(result && result.successCount > 0)
+        pushResult = await sendPushToUser(specificUserId, pushPayload)
+        pushSuccess = !!(pushResult && pushResult.successCount > 0)
       }
+
+      console.log('[Push] sendNotification Firebase result', {
+        recipientType,
+        successCount: pushResult?.successCount || 0,
+        failureCount: pushResult?.failureCount || 0,
+        failedTokenCount: pushResult?.failedTokens.length || 0,
+        pushSuccess,
+      })
     } catch (pushError) {
-      console.error('Push notification delivery error:', pushError)
+      console.error('[Push] Error', {
+        source: 'sendNotification',
+        recipientType,
+        error: getPushErrorDebugInfo(pushError),
+      })
     }
 
     // Mark notifications as sent if push was successful
