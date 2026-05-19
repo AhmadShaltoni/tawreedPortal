@@ -36,8 +36,8 @@ yarn-error.log*
 # vercel
 .vercel
 
-# uploads
-/public/uploads/
+# uploads - TEMPORARILY DISABLED (images backed up on Cloudinary)
+# /public/uploads/
 
 # typescript
 *.tsbuildinfo
