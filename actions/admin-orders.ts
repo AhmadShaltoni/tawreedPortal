@@ -4,6 +4,8 @@ import { db } from '@/lib/db'
 import { requireRole } from '@/lib/auth'
 import { updateOrderStatusSchema } from '@/lib/validations'
 import { createAndSendNotification } from '@/lib/push-notifications'
+import { calculateOrderPoints, awardWelcomeBonus, processReferralRewards } from './loyalty-points'
+import { updateUserCampaignProgress } from './loyalty-campaigns'
 import type { ActionResponse, AdminDashboardStats } from '@/types'
 import { revalidatePath } from 'next/cache'
 
@@ -99,6 +101,31 @@ export async function updateAdminOrderStatus(formData: FormData): Promise<Action
       status: validated.data.status,
     },
   })
+
+  // Loyalty system hooks - when order is delivered
+  if (validated.data.status === 'DELIVERED') {
+    // Calculate and award loyalty points
+    await calculateOrderPoints(validated.data.orderId)
+    
+    // Update campaign progress
+    await updateUserCampaignProgress(order.buyerId, validated.data.orderId)
+    
+    // Check if this is the first delivered order for welcome bonus & referral
+    const deliveredOrdersCount = await db.order.count({
+      where: {
+        buyerId: order.buyerId,
+        status: 'DELIVERED',
+      },
+    })
+    
+    if (deliveredOrdersCount === 1) {
+      // First delivered order - check welcome bonus trigger
+      await awardWelcomeBonus(order.buyerId, 'FIRST_DELIVERED_ORDER')
+      
+      // Process referral rewards (if applicable)
+      await processReferralRewards(order.buyerId, 'FIRST_DELIVERED_ORDER')
+    }
+  }
 
   revalidatePath('/admin/orders')
   revalidatePath(`/admin/orders/${validated.data.orderId}`)

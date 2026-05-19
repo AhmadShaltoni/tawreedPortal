@@ -317,6 +317,7 @@ export interface ActionResponse<T = void> {
   data?: T
   error?: string
   errors?: Record<string, string[]>
+  message?: string
 }
 
 // Discount Code types

@@ -47,14 +47,18 @@ enum OrderStatus {
 
 // Notification types
 enum NotificationType {
-  NEW_REQUEST     // Legacy
-  NEW_OFFER       // Legacy
-  OFFER_ACCEPTED  // Legacy
-  OFFER_REJECTED  // Legacy
-  ORDER_UPDATE    // Order status changed
-  NEW_ORDER       // New order placed (for admin)
-  ORDER_STATUS_CHANGE // Order status changed (for buyer)
-  SYSTEM          // System notifications
+  NEW_REQUEST             // Legacy
+  NEW_OFFER               // Legacy
+  OFFER_ACCEPTED          // Legacy
+  OFFER_REJECTED          // Legacy
+  ORDER_UPDATE            // Order status changed
+  NEW_ORDER               // New order placed (for admin)
+  ORDER_STATUS_CHANGE     // Order status changed (for buyer)
+  SYSTEM                  // System notifications
+  LOYALTY_POINTS_EARNED   // User earned loyalty points
+  LOYALTY_REWARD_REDEEMED // User redeemed a reward
+  LOYALTY_CAMPAIGN_COMPLETE // User completed a campaign
+  LOYALTY_REFERRAL_SUCCESS  // Referral success notification
 }
 
 // Product categories - Legacy enum (kept for old Request model)
@@ -90,6 +94,41 @@ enum Unit {
 enum Platform {
   IOS
   ANDROID
+}
+
+// Loyalty transaction types
+enum LoyaltyTransactionType {
+  EARN_ORDER                // Points earned from delivered order
+  EARN_WELCOME              // Welcome bonus points
+  EARN_REFERRAL_INVITER     // Points for inviting someone
+  EARN_REFERRAL_INVITEE     // Points for being invited
+  EARN_CAMPAIGN             // Points from campaign completion
+  REDEEM                    // Points redeemed for reward
+  MANUAL_ADD                // Admin manually added points
+  MANUAL_REMOVE             // Admin manually removed points
+  EXPIRED                   // Points expired
+}
+
+// Reward types
+enum RewardType {
+  FIXED_DISCOUNT        // Fixed amount discount (e.g., 10 JOD off)
+  PERCENTAGE_DISCOUNT   // Percentage discount (e.g., 15% off)
+  FREE_DELIVERY         // Free delivery
+  CUSTOM                // Custom reward
+}
+
+// Campaign goal types
+enum CampaignGoalType {
+  SPEND_AMOUNT          // Spend X JOD
+  ORDER_COUNT           // Place X orders
+}
+
+// Campaign status
+enum CampaignStatus {
+  DRAFT                 // Not yet published
+  ACTIVE                // Currently running
+  PAUSED                // Temporarily paused
+  ENDED                 // Finished
 }
 
 // ============================================
@@ -139,6 +178,16 @@ model User {
   cartItems     CartItem[]
   deviceTokens  DeviceToken[]   // Multiple devices per user
   discountCodeUsages DiscountCodeUsage[]
+  
+  // Relations - Loyalty system
+  loyaltyBalance         LoyaltyBalance?
+  loyaltyTransactions    LoyaltyTransaction[]
+  referral               UserReferral?
+  referredUsers          UserReferral[]  @relation("ReferredBy")
+  redeemedRewards        RedeemedReward[]
+  campaignProgress       UserCampaignProgress[]
+  loyaltyAuditLogs       LoyaltyAuditLog[]  @relation("AdminLoyaltyActions")
+  targetedLoyaltyAudits  LoyaltyAuditLog[]  @relation("TargetUserLoyaltyActions")
   
   @@index([role])
   @@index([city])
@@ -238,6 +287,7 @@ model Order {
   
   // Order total
   totalPrice    Float
+  deliveryFee   Float     @default(0)  // Separate delivery fee for loyalty calculations
   
   // Delivery
   deliveryAddress String
@@ -272,6 +322,11 @@ model Order {
   request       Request?    @relation(fields: [requestId], references: [id])
   offerId       String?     @unique
   offer         Offer?      @relation(fields: [offerId], references: [id])
+  
+  // Loyalty system
+  loyaltyPointsEarned  Int?     // Points earned from this order (when delivered)
+  redeemedRewardId     String?  // Redeemed reward applied to this order
+  redeemedReward       RedeemedReward? @relation(fields: [redeemedRewardId], references: [id])
   
   @@index([status])
   @@index([buyerId])
@@ -659,4 +714,267 @@ model DiscountCodeUsage {
   @@index([discountCodeId])
   @@index([userId])
   @@index([discountCodeId, userId])
+}
+
+// ============================================
+// LOYALTY & REWARDS SYSTEM
+// ============================================
+
+// Loyalty system configuration (singleton table - one row)
+model LoyaltyConfig {
+  id                  String    @id @default(cuid())
+  
+  // Enable/disable entire system
+  isEnabled           Boolean   @default(true)
+  
+  // Points calculation
+  pointsPerJod        Float     @default(10)      // 1 JOD = X points
+  calculationBase     Float     @default(1)       // Calculate points per X JOD
+  minOrderValue       Float?                      // Min order value to earn points
+  excludeDeliveryFees Boolean   @default(true)    // Exclude delivery from calculations
+  roundingMode        String    @default("FLOOR") // FLOOR, CEIL, ROUND
+  
+  updatedAt           DateTime  @updatedAt
+}
+
+// User loyalty balance (one per user)
+model LoyaltyBalance {
+  id              String    @id @default(cuid())
+  
+  // Balance tracking
+  totalEarned     Int       @default(0)  // Total points ever earned
+  totalRedeemed   Int       @default(0)  // Total points ever redeemed
+  currentBalance  Int       @default(0)  // Available points
+  
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([currentBalance])
+}
+
+// Loyalty transaction log (immutable audit trail)
+model LoyaltyTransaction {
+  id              String                  @id @default(cuid())
+  
+  type            LoyaltyTransactionType
+  points          Int                     // Positive for earn, negative for redeem
+  description     String
+  descriptionEn   String?
+  // Reference to related entity (order, campaign, etc.)
+  referenceId     String?
+  referenceType   String?                 // "ORDER", "CAMPAIGN", "REFERRAL", "MANUAL"
+  
+  // Additional data
+  metadata        Json?                   // Flexible data storage
+  
+  createdAt       DateTime                @default(now())
+  
+  // Relations
+  userId          String
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, createdAt])
+  @@index([type])
+  @@index([referenceId])
+}
+
+// Welcome bonus configuration (singleton)
+model WelcomeBonusConfig {
+  id              String    @id @default(cuid())
+  
+  isEnabled       Boolean   @default(true)
+  points          Int       @default(100)
+  trigger         String    @default("SIGNUP") // "SIGNUP" or "FIRST_DELIVERED_ORDER"
+  
+  updatedAt       DateTime  @updatedAt
+}
+
+// Referral system configuration (singleton)
+model ReferralConfig {
+  id              String    @id @default(cuid())
+  
+  isEnabled       Boolean   @default(true)
+  inviterPoints   Int       @default(50)   // Points for person who invited
+  inviteePoints   Int       @default(50)   // Points for person who signed up
+  trigger         String    @default("FIRST_DELIVERED_ORDER") // "SIGNUP" or "FIRST_DELIVERED_ORDER"
+  
+  updatedAt       DateTime  @updatedAt
+}
+
+// User referral tracking
+model UserReferral {
+  id                    String    @id @default(cuid())
+  
+  referralCode          String    @unique  // Unique code for this user
+  
+  // Tracking
+  referralRewardClaimed Boolean   @default(false)  // Invitee claimed their reward
+  inviterRewardClaimed  Boolean   @default(false)  // Inviter claimed their reward
+  
+  createdAt             DateTime  @default(now())
+  
+  // Relations
+  userId                String    @unique
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Who referred this user (nullable - not everyone is referred)
+  referredByUserId      String?
+  referredBy            User?     @relation("ReferredBy", fields: [referredByUserId], references: [id])
+  
+  @@index([referralCode])
+  @@index([referredByUserId])
+}
+
+// Loyalty rewards catalog (admin-created)
+model LoyaltyReward {
+  id              String      @id @default(cuid())
+  
+  // Basic info
+  name            String
+  nameEn          String?
+  description     String?
+  descriptionEn   String?
+  
+  // Redemption
+  pointsCost      Int
+  rewardType      RewardType
+  discountValue   Float       // JOD for fixed, percentage for percentage discount
+  
+  // Constraints
+  maxDiscountCap  Float?      // Max discount amount for percentage discounts
+  minOrderValue   Float?      // Min order value to use this reward
+  expirationDays  Int         @default(30)  // Days until coupon expires after redemption
+  usageLimit      Int?        // Max total redemptions (null = unlimited)
+  
+  // Status
+  totalRedeemed   Int         @default(0)
+  isActive        Boolean     @default(true)
+  sortOrder       Int         @default(0)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  // Relations
+  redemptions     RedeemedReward[]
+  
+  @@index([isActive, sortOrder])
+  @@index([pointsCost])
+}
+
+// Redeemed rewards (issued coupons)
+model RedeemedReward {
+  id              String      @id @default(cuid())
+  
+  couponCode      String      @unique  // Unique generated code
+  
+  // Snapshot of reward at redemption time
+  discountValue   Float
+  rewardType      RewardType
+  minOrderValue   Float?
+  maxDiscountCap  Float?
+  
+  // Status
+  expiresAt       DateTime
+  isUsed          Boolean     @default(false)
+  usedAt          DateTime?
+  
+  createdAt       DateTime    @default(now())
+  
+  // Relations
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  rewardId        String
+  reward          LoyaltyReward @relation(fields: [rewardId], references: [id])
+  
+  orderId         String?     // Order where coupon was used
+  orders          Order[]     // Orders that used this reward
+  
+  @@index([userId, isUsed])
+  @@index([couponCode])
+  @@index([expiresAt])
+}
+
+// Loyalty campaigns (progress/goal challenges)
+model LoyaltyCampaign {
+  id              String          @id @default(cuid())
+  
+  // Basic info
+  name            String
+  nameEn          String?
+  description     String?
+  descriptionEn   String?
+  
+  // Goal
+  goalType        CampaignGoalType
+  targetValue     Float           // Amount (JOD) or count (orders)
+  
+  // Reward
+  rewardType      RewardType
+  rewardValue     Float
+  
+  // Duration
+  startDate       DateTime
+  endDate         DateTime
+  
+  // Status
+  status          CampaignStatus  @default(DRAFT)
+  isActive        Boolean         @default(true)
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  // Relations
+  userProgress    UserCampaignProgress[]
+  
+  @@index([status, isActive])
+  @@index([startDate, endDate])
+}
+
+// User progress in campaigns
+model UserCampaignProgress {
+  id              String          @id @default(cuid())
+  
+  currentValue    Float           @default(0)  // Current spend or order count
+  isCompleted     Boolean         @default(false)
+  rewardClaimed   Boolean         @default(false)
+  completedAt     DateTime?
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  // Relations
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  campaignId      String
+  campaign        LoyaltyCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, campaignId])
+  @@index([userId, isCompleted])
+  @@index([campaignId, isCompleted])
+}
+
+// Admin actions audit log
+model LoyaltyAuditLog {
+  id              String    @id @default(cuid())
+  
+  action          String    // "ADD_POINTS", "REMOVE_POINTS", "LOCK_ACCOUNT", etc.
+  details         Json      // Flexible data storage
+  
+  createdAt       DateTime  @default(now())
+  
+  // Relations
+  adminId         String
+  admin           User      @relation("AdminLoyaltyActions", fields: [adminId], references: [id])
+  
+  targetUserId    String?
+  targetUser      User?     @relation("TargetUserLoyaltyActions", fields: [targetUserId], references: [id])
+  
+  @@index([adminId, createdAt])
+  @@index([targetUserId])
+  @@index([action])
 }

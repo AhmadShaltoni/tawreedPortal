@@ -398,6 +398,47 @@ async function main() {
     }
   }
 
+  // Seed loyalty system config singletons
+  const loyaltyConfig = await prisma.loyaltyConfig.findFirst()
+  if (!loyaltyConfig) {
+    await prisma.loyaltyConfig.create({
+      data: {
+        isEnabled: true,
+        pointsPerJod: 10,        // 1 JOD = 10 points
+        calculationBase: 1,       // Calculate per 1 JOD
+        minOrderValue: null,      // No minimum
+        excludeDeliveryFees: true,
+        roundingMode: 'FLOOR',
+      },
+    })
+    console.log('✅ Initialized loyalty system config')
+  }
+
+  const welcomeBonusConfig = await prisma.welcomeBonusConfig.findFirst()
+  if (!welcomeBonusConfig) {
+    await prisma.welcomeBonusConfig.create({
+      data: {
+        isEnabled: true,
+        points: 100,
+        trigger: 'SIGNUP',
+      },
+    })
+    console.log('✅ Initialized welcome bonus config')
+  }
+
+  const referralConfig = await prisma.referralConfig.findFirst()
+  if (!referralConfig) {
+    await prisma.referralConfig.create({
+      data: {
+        isEnabled: true,
+        inviterPoints: 50,
+        inviteePoints: 50,
+        trigger: 'FIRST_DELIVERED_ORDER',
+      },
+    })
+    console.log('✅ Initialized referral config')
+  }
+
   console.log('🌱 Seeding complete!')
 }
 

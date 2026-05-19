@@ -4,6 +4,8 @@ import { hash } from 'bcryptjs'
 import { db } from '@/lib/db'
 import { signIn, signOut } from '@/lib/auth'
 import { signUpSchema, signInSchema } from '@/lib/validations'
+import { createUserReferral } from './loyalty-referrals'
+import { awardWelcomeBonus, processReferralRewards } from './loyalty-points'
 import type { ActionResponse } from '@/types'
 import { redirect } from 'next/navigation'
 
@@ -19,6 +21,9 @@ export async function registerUser(formData: FormData): Promise<ActionResponse> 
     businessAddress: formData.get('businessAddress') || undefined,
     city: formData.get('city') || undefined,
   }
+  
+  // Get referral code if provided
+  const referralCode = formData.get('referralCode') as string | undefined
 
   const validated = signUpSchema.safeParse(rawData)
 
@@ -61,7 +66,7 @@ export async function registerUser(formData: FormData): Promise<ActionResponse> 
   const passwordHash = await hash(password, 12)
 
   // Create user
-  await db.user.create({
+  const user = await db.user.create({
     data: {
       phone,
       username,
@@ -73,6 +78,33 @@ export async function registerUser(formData: FormData): Promise<ActionResponse> 
       city: city || null,
     },
   })
+
+  // Initialize loyalty system for new user
+  try {
+    // Create loyalty balance (starts at 0)
+    await db.loyaltyBalance.create({
+      data: {
+        userId: user.id,
+        totalEarned: 0,
+        totalRedeemed: 0,
+        currentBalance: 0,
+      },
+    })
+
+    // Create referral code for this user (and link to referrer if code provided)
+    await createUserReferral(user.id, referralCode)
+
+    // Award welcome bonus if trigger is SIGNUP
+    await awardWelcomeBonus(user.id, 'SIGNUP')
+
+    // Process referral rewards if trigger is SIGNUP and user was referred
+    if (referralCode) {
+      await processReferralRewards(user.id, 'SIGNUP')
+    }
+  } catch (error) {
+    console.error('[auth.registerUser] Loyalty initialization error:', error)
+    // Don't fail registration if loyalty fails
+  }
 
   return { success: true }
 }

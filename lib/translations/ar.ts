@@ -506,6 +506,7 @@ export const ar = {
     notices: 'النوتس',
     coupons: 'أكواد الخصم',
     revenue: 'الإيرادات والأرباح',
+    loyalty: 'نظام الولاء',
     settings: 'الإعدادات',
     welcome: 'مرحباً بك في لوحة التحكم',
     subtitle: 'إدارة المنتجات والطلبات والمستخدمين',
@@ -856,6 +857,87 @@ export const ar = {
     no: 'لا',
     noImage: 'بدون صورة',
     changeImage: 'تغيير الصورة',
+  },
+
+  // Loyalty Program
+  loyalty: {
+    title: 'نظام الولاء والنقاط',
+    dashboard: 'لوحة إحصائيات الولاء',
+    config: 'إعدادات النظام',
+    rewards: 'إدارة المكافآت',
+    campaigns: 'إدارة الحملات',
+    transactions: 'سجل الحركات',
+    users: 'أفضل العملاء',
+    
+    // Stats
+    totalPointsEarned: 'إجمالي النقاط المكتسبة',
+    totalPointsRedeemed: 'النقاط المستردة',
+    activeUsers: 'المستخدمون النشطون',
+    rewardsRedeemed: 'المكافآت المستردة',
+    
+    // Configuration
+    pointsPerJod: 'النقاط لكل دينار أردني',
+    minPointsForRedemption: 'الحد الأدنى للاستردار',
+    maxPointsPerMonth: 'الحد الأقصى للنقاط شهرياً',
+    saveSettings: 'حفظ الإعدادات',
+    currentSettings: 'الإعدادات الحالية',
+    
+    // Rewards
+    manageRewards: 'إدارة المكافآت',
+    availableRewards: 'المكافآت المتاحة',
+    addNewReward: 'إضافة مكافأة جديدة',
+    rewardTitle: 'اسم المكافأة',
+    rewardDescription: 'الوصف',
+    pointsCost: 'عدد النقاط المطلوبة',
+    enableReward: 'تفعيل هذه المكافأة الآن',
+    deleteReward: 'حذف المكافأة',
+    
+    // Campaigns
+    manageCampaigns: 'إدارة الحملات',
+    activeCampaigns: 'الحملات النشطة',
+    addNewCampaign: 'إضافة حملة جديدة',
+    campaignTitle: 'عنوان الحملة',
+    campaignDescription: 'الوصف',
+    campaignGoal: 'الهدف (القيمة بالدينار)',
+    campaignReward: 'النقاط المكتسبة عند تحقيق الهدف',
+    campaignGoalMetric: 'نوع الهدف',
+    purchaseAmount: 'مبلغ الشراء',
+    orderCount: 'عدد الطلبات',
+    campaignStartDate: 'تاريخ البداية',
+    campaignEndDate: 'تاريخ النهاية',
+    enableCampaign: 'تفعيل هذه الحملة الآن',
+    deleteCampaign: 'حذف الحملة',
+    
+    // Transactions
+    transactionHistory: 'سجل حركات النقاط',
+    latestTransactions: 'آخر العمليات',
+    userName: 'المستخدم',
+    points: 'النقاط',
+    transactionType: 'النوع',
+    earnType: 'اكتساب',
+    redeemType: 'استردار',
+    description: 'الوصف',
+    transactionDate: 'التاريخ',
+    noTransactions: 'لا توجد عمليات حتى الآن',
+    totalEarned: 'النقاط المكتسبة',
+    totalRedeemed: 'النقاط المستردة',
+    
+    // Users/Customers
+    loyalCustomers: 'أفضل العملاء ولاءً',
+    topCustomers: 'أفضل العملاء',
+    rank: 'الترتيب',
+    email: 'البريد الإلكتروني',
+    loyaltyLevel: 'المستوى',
+    vip: 'VIP (1000+ نقطة)',
+    gold: 'Gold (500-999)',
+    silver: 'Silver (100-499)',
+    lastActivity: 'آخر نشاط',
+    noLoyaltyUsers: 'لا يوجد عملاء في برنامج الولاء حتى الآن',
+    programInfo: 'معلومات البرنامج',
+    membershipLevels: 'مستويات العضوية',
+    pointsAwardedOnDelivery: 'النقاط تُمنح عند توصيل الطلب فقط',
+    noExpiration: 'النقاط لا تنتهي صلاحيتها',
+    redeemAnytime: 'يمكن استردار النقاط في أي وقت',
   },
 }
 

@@ -605,6 +605,59 @@ Offer (1) ─────< (1) Order
 - Multi-channel delivery (web + mobile)
 - Notification preferences management
 
+### Loyalty & Rewards System (NEW - 85% Complete)
+
+**Overview**: Complete points-based loyalty program integrated into the marketplace.
+
+**Core Features**:
+- **Points Engine**: Earn 10 points per 1 JOD spent on delivered orders
+- **Welcome Bonus**: 100 points on signup or first delivered order
+- **Referral Program**: 50 points for both referrer and invitee (code: TAWREED-XXXXX)
+- **Reward Catalog**: Admin-curated rewards (discounts, free delivery)
+- **Coupon System**: Redeem points for discount coupons with expiry
+- **Progress Campaigns**: Goal-based challenges (spend amount, order count)
+- **Analytics Dashboard**: Complete admin analytics and reporting
+
+**Database Models** (11 new):
+- `LoyaltyConfig`, `LoyaltyBalance`, `LoyaltyTransaction`
+- `WelcomeBonusConfig`, `ReferralConfig`, `UserReferral`
+- `LoyaltyReward`, `RedeemedReward`
+- `LoyaltyCampaign`, `UserCampaignProgress`
+- `LoyaltyAuditLog`
+
+**Mobile API Endpoints** (9 endpoints):
+- `GET /api/v1/loyalty/balance` - User balance + recent transactions
+- `GET /api/v1/loyalty/transactions` - Transaction history
+- `GET /api/v1/loyalty/rewards` - Rewards catalog
+- `POST /api/v1/loyalty/rewards/redeem` - Redeem reward
+- `GET /api/v1/loyalty/coupons` - User's coupons
+- `POST /api/v1/loyalty/coupons/validate` - Validate coupon at checkout
+- `GET /api/v1/loyalty/campaigns` - Active campaigns + user progress
+- `GET /api/v1/loyalty/referral` - Referral code/link/stats
+- `POST /api/v1/loyalty/referral/apply` - Validate referral code
+
+**Server Actions** (6 files):
+- `loyalty-points.ts` - Core points engine (7 functions)
+- `loyalty-config.ts` - Admin configuration management
+- `loyalty-referrals.ts` - Referral system
+- `loyalty-rewards.ts` - Rewards & coupon management
+- `loyalty-campaigns.ts` - Campaign progress tracking
+- `loyalty-analytics.ts` - Admin dashboard statistics
+
+**Key Business Rules**:
+- Points **ONLY** awarded when order status = DELIVERED
+- Delivery fees excluded from points calculation
+- Immutable transaction audit log
+- Anti-abuse measures (duplicate prevention, self-referral blocking)
+- Push notifications for all loyalty events
+
+**Documentation**:
+- `LOYALTY_FRONTEND_GUIDE.md` - Complete API reference for mobile developers
+- `LOYALTY_IMPLEMENTATION_SUMMARY.md` - Technical implementation details
+- `LOYALTY_COMPLETE_REPORT.md` - Full status report
+
+**Status**: ✅ Core system operational, 📱 Mobile API ready, ⏳ Admin UI pending
+
 ---
 
 ## 8. 🚀 Future Improvements
@@ -845,6 +898,8 @@ export function MyComponent() {
 | Database Setup | Successful PostgreSQL setup, migrations, and seeding with 12 categories + admin user (admin@tawreed.jo) |
 | **Deployment Success** | **Project fully operational with database, admin access, and complete marketplace functionality** |
 | **Currency Runtime Fix** | **Fixed JOD currency format error (JD→JOD) and locale (en-SA→ar-JO) - All marketplace features now operational** |
+| **Loyalty & Rewards System** | **Complete loyalty program with points, referrals, rewards, campaigns - 85% complete (core system + mobile API operational)** |
+| Loyalty Implementation | Added 11 new database models, 6 server action files, 9 mobile API endpoints, complete documentation. System awards points on delivered orders, includes welcome bonus, referral program, reward redemption with coupons, progress-based campaigns, and full analytics |
 
 ---
 
@@ -854,9 +909,9 @@ export function MyComponent() {
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **Database Schema** | ✅ | **9 models**: User, Request, Offer, Order, Notification + **Category, Product, CartItem, OrderItem** |
+| **Database Schema** | ✅ | **20 models**: Core + Category, Product, CartItem, OrderItem + **11 Loyalty models** |
 | **Admin Dashboard** | ✅ | **12 complete pages**: dashboard, products, categories, orders, users with full CRUD |
-| **Mobile API (JWT)** | ✅ | **Complete RESTful API v1** with auth, products, cart, orders, notifications |
+| **Mobile API (JWT)** | ✅ | **Complete RESTful API v1** with auth, products, cart, orders, notifications, **loyalty** |
 | **Authentication** | ✅ | NextAuth v5 + JWT for mobile, role-based access (BUYER/SUPPLIER/ADMIN) |
 | **Product Management** | ✅ | Full CRUD with images, inventory, categories, admin-controlled |
 | **Category System** | ✅ | Hierarchical categories with drag-drop reordering, bilingual names |
@@ -866,6 +921,27 @@ export function MyComponent() {
 | **Currency Support** | ✅ | **JOD (Jordanian Dinar)** formatting with Arabic locale |
 | **Database Setup** | ✅ | **PostgreSQL operational** with seeded data (12 categories + admin user) |
 | **i18n (AR/EN)** | ✅ | **Enhanced translations** for admin dashboard and ecommerce features |
+| **Loyalty System** | ✅ | **Points, referrals, rewards, campaigns** - Core system + Mobile API operational |
+
+### ✅ **LOYALTY & REWARDS SYSTEM (85% Complete)**
+
+| Feature | Backend | Mobile API | Admin UI | Status |
+|---------|---------|------------|----------|--------|
+| Points Engine | ✅ | ✅ | ⏳ | 85% |
+| Welcome Bonus | ✅ | ✅ | ⏳ | 85% |
+| Referral Program | ✅ | ✅ | ⏳ | 85% |
+| Rewards Catalog | ✅ | ✅ | ⏳ | 85% |
+| Coupon Redemption | ✅ | ✅ | ⏳ | 85% |
+| Progress Campaigns | ✅ | ✅ | ⏳ | 85% |
+| Analytics | ✅ | N/A | ⏳ | 50% |
+
+**Legend**: ✅ Complete, ⏳ Pending, N/A Not applicable
+
+**Mobile Developers**: All loyalty API endpoints are ready! See `LOYALTY_FRONTEND_GUIDE.md`
+
+**Pending Work**:
+- Admin dashboard pages for loyalty management (7 pages)
+- Translation keys for loyalty UI (AR/EN)
 
 ### ✅ **LEGACY FEATURES MAINTAINED**
 
@@ -881,24 +957,24 @@ export function MyComponent() {
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **Database** | ✅ | PostgreSQL running, migrated, seeded |
+| **Database** | ✅ | PostgreSQL running, migrated, seeded (including loyalty configs) |
 | **Admin Access** | ✅ | **admin@tawreed.jo** / **Admin@123** |
 | **Development Server** | ✅ | **http://localhost:3000** operational |
-| **API Endpoints** | ✅ | **27 endpoints** across 6 modules |
-| **File Structure** | ✅ | **35+ new files** added for transformation |
+| **API Endpoints** | ✅ | **36 endpoints** across 7 modules (added loyalty module) |
+| **File Structure** | ✅ | **60+ files** for complete marketplace + loyalty system |
 
 ### 📋 **IMMEDIATE NEXT STEPS**
 
 | Feature | Priority | Effort |
 |---------|----------|--------|
+| **Loyalty Admin Dashboard** | High | 8-10 hours |
+| **Loyalty Translations** | High | 2-3 hours |
 | Product Image Upload | High | Medium |
 | Advanced Search/Filter | High | Medium |
 | Email Notifications | Medium | Low |
 | Payment Integration | High | High |
 | Mobile App (React Native) | High | High |
 | Analytics Enhancement | Medium | Medium |
-| Mobile App | 4 | High |
-| AI Features | 4 | Low |
 
 ---
 

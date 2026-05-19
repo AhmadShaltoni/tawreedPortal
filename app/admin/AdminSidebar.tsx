@@ -14,7 +14,8 @@ import {
   Settings,
   Package2,
   Truck,
-  BarChart3
+  BarChart3,
+  Gift
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/LanguageContext'
@@ -34,6 +35,7 @@ export function AdminSidebar() {
     { href: '/admin/notices', label: t.admin.notices, icon: StickyNote },
     { href: '/admin/coupons', label: t.admin.coupons, icon: Ticket },
     { href: '/admin/revenue', label: t.admin.revenue || 'الإيرادات والأرباح', icon: BarChart3 },
+    { href: '/admin/loyalty/dashboard', label: t.admin.loyalty || 'نظام الولاء', icon: Gift },
   ]
 
   return (
