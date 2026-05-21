@@ -7,7 +7,7 @@ export async function OPTIONS() {
   return corsOptions()
 }
 
-// GET /api/v1/products/[id]
+// GET /api/v1/products/[id] - Full product detail
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -18,10 +18,17 @@ export async function GET(
     where: {
       id,
       isActive: true,
-      variants: { some: { stock: { gt: 0 }, isActive: true } },
     },
     include: {
       category: { select: { id: true, name: true, nameEn: true, slug: true } },
+      brand: { select: { id: true, name: true, nameEn: true, slug: true, logo: true } },
+      categories: {
+        include: { category: { select: { id: true, name: true, nameEn: true, slug: true } } },
+        orderBy: { isPrimary: 'desc' },
+      },
+      tags: {
+        include: { tag: { select: { id: true, name: true, nameEn: true, slug: true } } },
+      },
       variants: {
         where: { isActive: true },
         orderBy: { sortOrder: 'asc' },
@@ -37,6 +44,19 @@ export async function GET(
               price: true,
               compareAtPrice: true,
               isDefault: true,
+              sortOrder: true,
+            },
+          },
+          options: {
+            where: { isActive: true },
+            orderBy: { sortOrder: 'asc' },
+            select: {
+              id: true,
+              name: true,
+              nameEn: true,
+              stock: true,
+              priceOverride: true,
+              isActive: true,
               sortOrder: true,
             },
           },

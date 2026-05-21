@@ -59,7 +59,11 @@ export async function POST(request: NextRequest) {
   // Get cart items
   const cartItems = await db.cartItem.findMany({
     where: { buyerId: user.id },
-    include: { variant: { include: { product: true } }, productUnit: true },
+    include: {
+      variant: { include: { product: true } },
+      productUnit: true,
+      variantOption: true,
+    },
   })
 
   if (cartItems.length === 0) {
@@ -74,14 +78,21 @@ export async function POST(request: NextRequest) {
     if (!item.variant.isActive) {
       return apiError(`Variant "${item.variant.size}" is no longer available`, 400)
     }
-    if (item.variant.stock < item.quantity) {
-      return apiError(`Insufficient stock for "${item.variant.product.name} - ${item.variant.size}". Available: ${item.variant.stock}`, 400)
+    // Check stock: option-level if option selected, otherwise variant-level
+    if (item.variantOption) {
+      if (item.variantOption.stock < item.quantity) {
+        return apiError(`Insufficient stock for "${item.variant.product.name} - ${item.variant.size} - ${item.variantOption.name}". Available: ${item.variantOption.stock}`, 400)
+      }
+    } else {
+      if (item.variant.stock < item.quantity) {
+        return apiError(`Insufficient stock for "${item.variant.product.name} - ${item.variant.size}". Available: ${item.variant.stock}`, 400)
+      }
     }
   }
 
-  // Calculate total (using selected unit price if available)
+  // Calculate total (using option priceOverride if set, otherwise unit price)
   const totalPrice = cartItems.reduce((sum, item) => {
-    const unitPrice = item.productUnit?.price ?? 0
+    const unitPrice = item.variantOption?.priceOverride ?? item.productUnit?.price ?? 0
     return sum + unitPrice * item.quantity
   }, 0)
 
@@ -147,7 +158,7 @@ export async function POST(request: NextRequest) {
         ],
         items: {
           create: cartItems.map((item) => {
-            const unitPrice = item.productUnit?.price ?? 0
+            const unitPrice = item.variantOption?.priceOverride ?? item.productUnit?.price ?? 0
             const unit = item.productUnit?.unit ?? 'PIECE'
             const piecesPerUnit = item.productUnit?.piecesPerUnit ?? 1
             const unitLabel = item.productUnit?.label ?? null
@@ -159,6 +170,8 @@ export async function POST(request: NextRequest) {
               productImage: item.variant.product.image,
               variantSize: item.variant.size,
               variantSizeEn: item.variant.sizeEn,
+              variantOptionName: item.variantOption?.name ?? null,
+              variantOptionNameEn: item.variantOption?.nameEn ?? null,
               quantity: item.quantity,
               unit,
               pricePerUnit: unitPrice,
@@ -173,12 +186,19 @@ export async function POST(request: NextRequest) {
       include: { items: true },
     })
 
-    // Decrease stock on variant level
+    // Decrease stock: option-level if option selected, otherwise variant-level
     for (const item of cartItems) {
-      await tx.productVariant.update({
-        where: { id: item.variantId },
-        data: { stock: { decrement: item.quantity } },
-      })
+      if (item.variantOptionId) {
+        await tx.variantOption.update({
+          where: { id: item.variantOptionId },
+          data: { stock: { decrement: item.quantity } },
+        })
+      } else {
+        await tx.productVariant.update({
+          where: { id: item.variantId },
+          data: { stock: { decrement: item.quantity } },
+        })
+      }
     }
 
     // Clear cart

@@ -9,6 +9,7 @@ export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | '
 export type NotificationType = 'NEW_REQUEST' | 'NEW_OFFER' | 'OFFER_ACCEPTED' | 'OFFER_REJECTED' | 'ORDER_UPDATE' | 'NEW_ORDER' | 'ORDER_STATUS_CHANGE' | 'SYSTEM'
 export type ProductCategory = 'SUGAR' | 'RICE' | 'CANDY_SNACKS' | 'DAIRY' | 'BEVERAGES' | 'CANNED_GOODS' | 'COOKING_OIL' | 'FLOUR_GRAINS' | 'SPICES' | 'CLEANING' | 'PERSONAL_CARE' | 'OTHER'
 export type Unit = 'KG' | 'GRAM' | 'LITER' | 'PIECE' | 'PACK' | 'BOX' | 'CARTON' | 'DOZEN' | 'PALLET'
+export type CollectionType = 'MANUAL' | 'OFFERS' | 'FEATURED'
 
 // Base model types
 export interface User {
@@ -94,6 +95,8 @@ export interface OrderItem {
   productImage: string | null
   variantSize: string | null
   variantSizeEn: string | null
+  variantOptionName: string | null
+  variantOptionNameEn: string | null
   unitLabel: string | null
   unitLabelEn: string | null
   piecesPerUnit: number
@@ -161,6 +164,8 @@ export interface Product {
   image: string | null
   images: string[]
   categoryId: string
+  brandId: string | null
+  supplierId: string | null
   isActive: boolean
   sortOrder: number
   createdAt: Date
@@ -173,6 +178,83 @@ export interface CartItem {
   buyerId: string
   variantId: string
   productUnitId: string | null
+  variantOptionId: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+// New architecture models
+export interface Brand {
+  id: string
+  name: string
+  nameEn: string | null
+  slug: string
+  logo: string | null
+  description: string | null
+  descriptionEn: string | null
+  sortOrder: number
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface Collection {
+  id: string
+  name: string
+  nameEn: string | null
+  slug: string
+  description: string | null
+  descriptionEn: string | null
+  image: string | null
+  type: CollectionType
+  sortOrder: number
+  isActive: boolean
+  showOnHome: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface CollectionProduct {
+  collectionId: string
+  productId: string
+  sortOrder: number
+}
+
+export interface Tag {
+  id: string
+  name: string
+  nameEn: string | null
+  slug: string
+  sortOrder: number
+  isActive: boolean
+  categoryId: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface ProductTag {
+  productId: string
+  tagId: string
+}
+
+export interface ProductOnCategory {
+  productId: string
+  categoryId: string
+  isPrimary: boolean
+  sortOrder: number
+}
+
+export interface VariantOption {
+  id: string
+  name: string
+  nameEn: string | null
+  stock: number
+  sku: string | null
+  barcode: string | null
+  priceOverride: number | null
+  isActive: boolean
+  sortOrder: number
+  variantId: string
   createdAt: Date
   updatedAt: Date
 }
@@ -219,14 +301,17 @@ export type OrderItemWithProduct = OrderItem & {
 
 export type ProductWithCategory = Product & {
   category: Category
+  brand?: Brand | null
 }
 
 export type ProductVariantWithUnits = ProductVariant & {
   units: ProductUnit[]
+  options?: VariantOption[]
 }
 
 export type ProductWithVariants = Product & {
   category: Category
+  brand?: Brand | null
   variants: ProductVariantWithUnits[]
 }
 
@@ -234,8 +319,10 @@ export type CartItemWithProduct = CartItem & {
   variant: ProductVariant & {
     product: ProductWithCategory
     units: ProductUnit[]
+    options?: VariantOption[]
   }
   productUnit: ProductUnit | null
+  variantOption: VariantOption | null
 }
 
 export type CategoryWithProducts = Category & {
@@ -245,6 +332,7 @@ export type CategoryWithProducts = Category & {
 
 export type CategoryWithChildren = Category & {
   children: CategoryWithChildren[]
+  tags?: Tag[]
   _count?: { products: number; children: number }
 }
 
@@ -253,6 +341,21 @@ export type CategoryBreadcrumb = {
   name: string
   nameEn: string | null
   slug: string
+}
+
+export type BrandWithProducts = Brand & {
+  products: Product[]
+  _count?: { products: number }
+}
+
+export type CollectionWithProducts = Collection & {
+  products: (CollectionProduct & { product: Product })[]
+  _count?: { products: number }
+}
+
+export type TagWithProducts = Tag & {
+  products: (ProductTag & { product: Product })[]
+  _count?: { products: number }
 }
 
 export type NotificationWithUser = Notification & {

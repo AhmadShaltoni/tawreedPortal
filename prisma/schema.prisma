@@ -131,6 +131,13 @@ enum CampaignStatus {
   ENDED                 // Finished
 }
 
+// Collection types for virtual product groupings
+enum CollectionType {
+  MANUAL                // Manually curated by admin
+  OFFERS                // Products with discounts/promotions
+  FEATURED              // Homepage featured products
+}
+
 // ============================================
 // CORE MODELS
 // ============================================
@@ -348,6 +355,10 @@ model OrderItem {
   variantSize   String?    // e.g., "2 كيلو"
   variantSizeEn String?    // e.g., "2kg"
   
+  // Option snapshot (flavor/color selected at order time)
+  variantOptionName   String?  // e.g., "تفاح"
+  variantOptionNameEn String?  // e.g., "Apple"
+  
   // Unit snapshot (captures which unit was selected at order time)
   unitLabel     String?    // e.g., "كرتونة (36 قطعة)"
   unitLabelEn   String?    // e.g., "Carton (36 pieces)"
@@ -393,12 +404,129 @@ model Category {
   updatedAt   DateTime  @updatedAt
   
   // Relations
-  products    Product[]
+  products    Product[]            // Legacy direct FK (primary category shortcut)
+  productCategories ProductOnCategory[]  // Many-to-many product classification
+  tags        Tag[]                // Filter tabs within this category
   
   @@index([sortOrder])
   @@index([isActive])
   @@index([parentId])
   @@index([path])
+}
+
+// Brand (admin-managed, products grouped by brand)
+model Brand {
+  id            String    @id @default(cuid())
+  name          String    // Arabic name
+  nameEn        String?   // English name
+  slug          String    @unique
+  logo          String?   // Brand logo image URL
+  description   String?   // Arabic description
+  descriptionEn String?   // English description
+  sortOrder     Int       @default(0)
+  isActive      Boolean   @default(true)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  products      Product[]
+  
+  @@index([isActive])
+  @@index([sortOrder])
+  @@index([slug])
+}
+
+// Many-to-many: Product belongs to multiple categories
+model ProductOnCategory {
+  productId   String
+  categoryId  String
+  isPrimary   Boolean   @default(false) // One primary per product (for display/URL)
+  sortOrder   Int       @default(0)     // Product position within this category
+  
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category    Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  @@id([productId, categoryId])
+  @@index([categoryId])
+  @@index([productId])
+  @@index([isPrimary])
+}
+
+// Collection (virtual product grouping: Offers, Best Sellers, Featured, etc.)
+model Collection {
+  id              String           @id @default(cuid())
+  name            String           // Arabic name
+  nameEn          String?          // English name
+  slug            String           @unique
+  description     String?          // Arabic description
+  descriptionEn   String?          // English description
+  image           String?          // Collection cover image
+  type            CollectionType   @default(MANUAL)
+  sortOrder       Int              @default(0)
+  isActive        Boolean          @default(true)
+  showOnHome      Boolean          @default(false) // Display on mobile home screen
+  
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  
+  // Relations
+  products        CollectionProduct[]
+  
+  @@index([isActive])
+  @@index([showOnHome])
+  @@index([sortOrder])
+  @@index([slug])
+}
+
+// Junction: Product in a Collection
+model CollectionProduct {
+  collectionId  String
+  productId     String
+  sortOrder     Int        @default(0)  // Product position within collection
+  
+  collection    Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  product       Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  @@id([collectionId, productId])
+  @@index([productId])
+}
+
+// Tag (admin-controlled filter tabs within a category)
+model Tag {
+  id          String   @id @default(cuid())
+  name        String   // Arabic: "مشروبات شعير"
+  nameEn      String?  // English: "Malt Drinks"
+  slug        String   // Normalized slug (unique within category)
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  
+  // Scoped to a category
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  products    ProductTag[]
+  
+  @@unique([categoryId, slug]) // Unique slug per category
+  @@index([categoryId])
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+// Junction: Product tagged with a Tag
+model ProductTag {
+  productId String
+  tagId     String
+  
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  
+  @@id([productId, tagId])
+  @@index([tagId])
 }
 
 // Supplier (managed by admin, provides products)
@@ -437,9 +565,13 @@ model Product {
   image           String?   // Main product image path
   images          String[]  // Additional images
   
-  // Classification
+  // Primary classification (denormalized shortcut — synced with ProductCategory isPrimary=true)
   categoryId      String
   category        Category  @relation(fields: [categoryId], references: [id])
+  
+  // Brand (optional)
+  brandId         String?
+  brand           Brand?    @relation(fields: [brandId], references: [id])
   
   // Supplier
   supplierId      String?
@@ -453,10 +585,14 @@ model Product {
   updatedAt       DateTime  @updatedAt
   
   // Relations
-  variants        ProductVariant[]  // Multiple size variants (e.g., 2kg, 4kg)
+  variants        ProductVariant[]      // Multiple size variants (e.g., 2kg, 4kg)
   orderItems      OrderItem[]
+  categories      ProductOnCategory[]   // Many-to-many category classification
+  collections     CollectionProduct[]   // Virtual groupings (Offers, Best Sellers, etc.)
+  tags            ProductTag[]          // Filter tags
   
   @@index([categoryId])
+  @@index([brandId])
   @@index([supplierId])
   @@index([isActive])
   @@index([sortOrder])
@@ -470,7 +606,7 @@ model ProductVariant {
   size            String    // Arabic size label: "2 كيلو", "4 كيلو"
   sizeEn          String?   // English size label: "2kg", "4kg"
   
-  // Inventory (per variant)
+  // Inventory (per variant — used when variant has NO options)
   sku             String?   @unique
   barcode         String?
   stock           Int       @default(0)
@@ -488,9 +624,35 @@ model ProductVariant {
   productId       String
   product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
   units           ProductUnit[]  // Selling units for this variant (piece, dozen, carton...)
+  options         VariantOption[]  // Flavor/color options (when present, stock tracked per option)
   cartItems       CartItem[]
   
   @@index([productId])
+}
+
+// Variant option (e.g., flavor, color — stock tracked per option)
+// When a variant has options, individual stock moves here; variant.stock becomes computed sum
+model VariantOption {
+  id            String   @id @default(cuid())
+  name          String   // Arabic: "تفاح", "برتقال"
+  nameEn        String?  // English: "Apple", "Orange"
+  stock         Int      @default(0)
+  sku           String?  @unique
+  barcode       String?
+  priceOverride Float?   // Nullable: if set, overrides ProductUnit price for this option
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  variantId     String
+  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  cartItems     CartItem[]
+  
+  @@index([variantId])
+  @@index([isActive])
 }
 
 // Product selling unit (e.g., piece, dozen, carton with different prices)
@@ -539,7 +701,11 @@ model CartItem {
   productUnitId String?
   productUnit   ProductUnit? @relation(fields: [productUnitId], references: [id])
   
-  @@unique([buyerId, variantId, productUnitId]) // One cart entry per variant+unit per buyer
+  // Selected option (optional - e.g., flavor choice within a variant)
+  variantOptionId String?
+  variantOption   VariantOption? @relation(fields: [variantOptionId], references: [id])
+  
+  @@unique([buyerId, variantId, productUnitId, variantOptionId]) // One cart entry per variant+unit+option per buyer
   @@index([buyerId])
 }
 

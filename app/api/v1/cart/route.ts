@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   // Check variant exists and is active
   const variant = await db.productVariant.findUnique({
     where: { id: validated.data.variantId },
-    include: { product: true },
+    include: { product: true, options: { where: { isActive: true } } },
   })
   if (!variant || !variant.isActive || !variant.product.isActive) {
     return apiError('Product variant not found or unavailable', 404)
@@ -67,24 +67,44 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Validate variantOptionId if provided
+  let variantOptionId: string | null = null
+  if (validated.data.variantOptionId) {
+    const variantOption = await db.variantOption.findUnique({
+      where: { id: validated.data.variantOptionId },
+    })
+    if (!variantOption || variantOption.variantId !== variant.id || !variantOption.isActive) {
+      return apiError('Invalid variant option', 400)
+    }
+    // Check option stock
+    if (variantOption.stock < validated.data.quantity) {
+      return apiError(`Only ${variantOption.stock} items available for this option`, 400)
+    }
+    variantOptionId = variantOption.id
+  } else if (variant.options.length > 0) {
+    // Variant has options but none selected — require selection
+    return apiError('Please select an option (e.g., flavor)', 400)
+  }
+
   // Check minimum order quantity
   if (validated.data.quantity < variant.minOrderQuantity) {
     return apiError(`Minimum order quantity is ${variant.minOrderQuantity}`, 400)
   }
 
-  // Check stock
-  if (variant.stock < validated.data.quantity) {
+  // Check stock (variant-level when no options exist)
+  if (!variantOptionId && variant.stock < validated.data.quantity) {
     return apiError(`Only ${variant.stock} items available`, 400)
   }
 
   const productUnitId = validated.data.productUnitId ?? null
 
-  // Find existing cart item with same variant+unit combo
+  // Find existing cart item with same variant+unit+option combo
   const existing = await db.cartItem.findFirst({
     where: {
       buyerId: user.id,
       variantId: validated.data.variantId,
       productUnitId: productUnitId,
+      variantOptionId: variantOptionId,
     },
   })
 
@@ -104,6 +124,7 @@ export async function POST(request: NextRequest) {
         buyerId: user.id,
         variantId: validated.data.variantId,
         productUnitId: productUnitId,
+        variantOptionId: variantOptionId,
         quantity: validated.data.quantity,
       },
       include: { variant: { include: { product: true } }, productUnit: true },

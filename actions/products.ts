@@ -18,6 +18,7 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
     description: formData.get('description') || undefined,
     descriptionEn: formData.get('descriptionEn') || undefined,
     categoryId: formData.get('categoryId'),
+    brandId: formData.get('brandId') || undefined,
     supplierId: formData.get('supplierId') || undefined,
     isActive: formData.get('isActive') === 'true',
   }
@@ -97,16 +98,49 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
     })
   }
 
+  // Parse additional category IDs, tag IDs, collection IDs
+  const categoryIdsJson = formData.get('categoryIds')
+  const categoryIds: string[] = categoryIdsJson ? JSON.parse(categoryIdsJson as string) : []
+  const tagIdsJson = formData.get('tagIds')
+  const tagIds: string[] = tagIdsJson ? JSON.parse(tagIdsJson as string) : []
+  const collectionIdsJson = formData.get('collectionIds')
+  const collectionIds: string[] = collectionIdsJson ? JSON.parse(collectionIdsJson as string) : []
+
   // Create product, variants, and units in a transaction
   const product = await db.$transaction(async (tx) => {
     const p = await tx.product.create({
       data: {
         ...validated.data,
+        brandId: (rawData.brandId as string) || null,
         supplierId: rawData.supplierId as string | undefined || null,
         image: imagePath,
         isActive: validated.data.isActive ?? true,
       },
     })
+
+    // Create ProductOnCategory junction records
+    const allCategoryIds = [validated.data.categoryId, ...categoryIds.filter(id => id !== validated.data.categoryId)]
+    for (let i = 0; i < allCategoryIds.length; i++) {
+      await tx.productOnCategory.create({
+        data: { productId: p.id, categoryId: allCategoryIds[i], isPrimary: i === 0, sortOrder: i },
+      })
+    }
+
+    // Assign tags
+    for (const tagId of tagIds) {
+      await tx.productTag.create({ data: { productId: p.id, tagId } })
+    }
+
+    // Add to collections
+    for (const collectionId of collectionIds) {
+      const maxSort = await tx.collectionProduct.aggregate({
+        where: { collectionId },
+        _max: { sortOrder: true },
+      })
+      await tx.collectionProduct.create({
+        data: { productId: p.id, collectionId, sortOrder: (maxSort._max.sortOrder ?? -1) + 1 },
+      })
+    }
 
     for (const variant of validatedVariants) {
       const { units, ...variantData } = variant
@@ -135,7 +169,7 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
   if (!existing) return { success: false, error: 'Product not found' }
 
   const rawData: Record<string, unknown> = {}
-  const fields = ['name', 'nameEn', 'description', 'descriptionEn', 'categoryId']
+  const fields = ['name', 'nameEn', 'description', 'descriptionEn', 'categoryId', 'brandId']
   
   for (const field of fields) {
     const value = formData.get(field)
@@ -147,6 +181,10 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
   // Handle supplierId (can be empty to remove supplier)
   const supplierIdValue = formData.get('supplierId')
   const supplierId = supplierIdValue && supplierIdValue !== '' ? supplierIdValue as string : null
+
+  // Handle brandId (can be empty to remove brand)
+  const brandIdValue = formData.get('brandId')
+  const brandId = brandIdValue && brandIdValue !== '' ? brandIdValue as string : null
 
   const isActive = formData.get('isActive')
   if (isActive !== null) {
@@ -230,6 +268,11 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
     }
   }
 
+  // Parse additional category IDs, tag IDs, collection IDs
+  const categoryIdsJson = formData.get('categoryIds')
+  const tagIdsJson = formData.get('tagIds')
+  const collectionIdsJson = formData.get('collectionIds')
+
   // Update product, variants, and units in a transaction
   await db.$transaction(async (tx) => {
     await tx.product.update({
@@ -237,12 +280,50 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
       data: {
         ...validated.data,
         supplierId,
+        brandId,
         ...(imagePath ? { image: imagePath } : {}),
       },
     })
 
+    // Update ProductOnCategory if categoryIds provided
+    if (categoryIdsJson) {
+      const categoryIds: string[] = JSON.parse(categoryIdsJson as string)
+      const primaryCategoryId = validated.data.categoryId ?? existing.categoryId
+      const allCategoryIds = [primaryCategoryId, ...categoryIds.filter(cid => cid !== primaryCategoryId)]
+      await tx.productOnCategory.deleteMany({ where: { productId: id } })
+      for (let i = 0; i < allCategoryIds.length; i++) {
+        await tx.productOnCategory.create({
+          data: { productId: id, categoryId: allCategoryIds[i], isPrimary: i === 0, sortOrder: i },
+        })
+      }
+    }
+
+    // Update tags if tagIds provided
+    if (tagIdsJson) {
+      const tagIds: string[] = JSON.parse(tagIdsJson as string)
+      await tx.productTag.deleteMany({ where: { productId: id } })
+      for (const tagId of tagIds) {
+        await tx.productTag.create({ data: { productId: id, tagId } })
+      }
+    }
+
+    // Update collections if collectionIds provided
+    if (collectionIdsJson) {
+      const collectionIds: string[] = JSON.parse(collectionIdsJson as string)
+      await tx.collectionProduct.deleteMany({ where: { productId: id } })
+      for (const collectionId of collectionIds) {
+        const maxSort = await tx.collectionProduct.aggregate({
+          where: { collectionId },
+          _max: { sortOrder: true },
+        })
+        await tx.collectionProduct.create({
+          data: { productId: id, collectionId, sortOrder: (maxSort._max.sortOrder ?? -1) + 1 },
+        })
+      }
+    }
+
     if (validatedVariants) {
-      // Delete all existing variants (cascades to units)
+      // Delete all existing variants (cascades to units and options)
       await tx.productVariant.deleteMany({ where: { productId: id } })
 
       for (const variant of validatedVariants) {

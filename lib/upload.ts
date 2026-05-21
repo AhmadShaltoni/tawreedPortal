@@ -73,3 +73,27 @@ export async function deleteCategoryImage(imagePath: string): Promise<void> {
     await deleteFromCloudinary(imagePath)
   }
 }
+
+// ============ BRAND IMAGES ============
+export async function saveBrandImage(file: File): Promise<string> {
+  return uploadToCloudinary(file, 'brands')
+}
+
+export async function deleteBrandImage(imagePath: string): Promise<void> {
+  if (!imagePath) return
+  if (imagePath.includes('cloudinary')) {
+    await deleteFromCloudinary(imagePath)
+  }
+}
+
+// ============ COLLECTION IMAGES ============
+export async function saveCollectionImage(file: File): Promise<string> {
+  return uploadToCloudinary(file, 'collections')
+}
+
+export async function deleteCollectionImage(imagePath: string): Promise<void> {
+  if (!imagePath) return
+  if (imagePath.includes('cloudinary')) {
+    await deleteFromCloudinary(imagePath)
+  }
+}

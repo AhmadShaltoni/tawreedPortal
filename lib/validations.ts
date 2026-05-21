@@ -160,6 +160,7 @@ export const addToCartSchema = z.object({
   variantId: z.string().min(1, 'Variant ID is required'),
   quantity: z.coerce.number().int().positive('Quantity must be at least 1'),
   productUnitId: z.string().optional(),
+  variantOptionId: z.string().optional(),
 })
 
 export const updateCartItemSchema = z.object({
@@ -211,6 +212,62 @@ export const confirmDiscountCodeSchema = z.object({
   code: z.string().min(1, 'كود الخصم مطلوب'),
   orderId: z.string().min(1, 'رقم الطلب مطلوب'),
   orderTotal: z.coerce.number().positive('مبلغ الطلب يجب أن يكون موجب'),
+})
+
+// Brand validations
+export const createBrandSchema = z.object({
+  name: z.string().min(2, 'Brand name is required'),
+  nameEn: z.string().optional(),
+  slug: z.string()
+    .min(2, 'Slug is required')
+    .regex(/^[a-z0-9-]+$/, 'Slug must contain only lowercase letters, numbers, and hyphens'),
+  description: z.string().optional(),
+  descriptionEn: z.string().optional(),
+  isActive: z.coerce.boolean().optional(),
+})
+
+export const updateBrandSchema = createBrandSchema.partial()
+
+// Collection validations
+export const createCollectionSchema = z.object({
+  name: z.string().min(2, 'Collection name is required'),
+  nameEn: z.string().optional(),
+  slug: z.string()
+    .min(2, 'Slug is required')
+    .regex(/^[a-z0-9-]+$/, 'Slug must contain only lowercase letters, numbers, and hyphens'),
+  description: z.string().optional(),
+  descriptionEn: z.string().optional(),
+  type: z.enum(['MANUAL', 'OFFERS', 'FEATURED']).optional(),
+  showOnHome: z.coerce.boolean().optional(),
+  isActive: z.coerce.boolean().optional(),
+})
+
+export const updateCollectionSchema = createCollectionSchema.partial()
+
+// Tag validations
+export const createTagSchema = z.object({
+  name: z.string().min(1, 'Tag name is required'),
+  nameEn: z.string().optional(),
+  categoryId: z.string().min(1, 'Category is required'),
+  isActive: z.coerce.boolean().optional(),
+})
+
+export const updateTagSchema = z.object({
+  name: z.string().min(1, 'Tag name is required').optional(),
+  nameEn: z.string().optional(),
+  isActive: z.coerce.boolean().optional(),
+})
+
+// Variant option validations
+export const variantOptionSchema = z.object({
+  name: z.string().min(1, 'Option name is required'),
+  nameEn: z.string().optional(),
+  stock: z.coerce.number().int().min(0, 'Stock must be 0 or more'),
+  sku: z.string().optional(),
+  barcode: z.string().optional(),
+  priceOverride: z.coerce.number().positive().optional().nullable(),
+  isActive: z.coerce.boolean().optional(),
+  sortOrder: z.coerce.number().int().optional(),
 })
 
 // Type exports from schemas

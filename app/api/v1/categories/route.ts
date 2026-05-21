@@ -87,6 +87,11 @@ export async function GET(request: NextRequest) {
       parentId: true,
       depth: true,
       isActive: true,
+      tags: {
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' },
+        select: { id: true, name: true, nameEn: true, slug: true },
+      },
       _count: { select: { products: { where: { isActive: true } }, children: { where: { isActive: true } } } },
     },
     orderBy: { sortOrder: 'asc' },
@@ -94,13 +99,14 @@ export async function GET(request: NextRequest) {
 
   // Transform response
   const categoriesWithMeta = categories.map(cat => {
-    const { image, _count, ...rest } = cat
+    const { image, _count, tags, ...rest } = cat
     return {
       ...rest,
       image: image ? { url: image, alt: cat.name } : null,
       hasChildren: _count.children > 0,
       productsCount: _count.products,
       childrenCount: _count.children,
+      tags,
     }
   })
 
