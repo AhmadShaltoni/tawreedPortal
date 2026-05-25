@@ -34,9 +34,38 @@ export async function GET(
     return apiError('Not authorized', 403)
   }
 
+  // Format order items with all selection details that were saved at order time
+  const formattedItems = order.items.map((item) => ({
+    id: item.id,
+    product: item.product,
+    // Size (variant) selected at order time
+    selectedSize: {
+      size: item.variantSize,
+      sizeEn: item.variantSizeEn,
+    },
+    // Flavor (option) selected at order time - if any
+    selectedFlavor: item.variantOptionName ? {
+      name: item.variantOptionName,
+      nameEn: item.variantOptionNameEn,
+    } : null,
+    // Selling unit selected at order time (e.g., piece, dozen, carton)
+    selectedUnit: {
+      label: item.unitLabel,
+      labelEn: item.unitLabelEn,
+      piecesPerUnit: item.piecesPerUnit,
+    },
+    quantity: item.quantity,
+    unit: item.unit,
+    pricing: {
+      pricePerUnit: item.pricePerUnit,
+      subtotal: item.totalPrice,
+    },
+  }))
+
   return apiResponse({ 
     order: {
       ...order,
+      items: formattedItems,
       buyerNotes: order.buyerNotes,
       statusHistory: order.statusHistory,
     }

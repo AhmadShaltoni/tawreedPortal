@@ -498,6 +498,7 @@ export const ar = {
   admin: {
     dashboard: 'لوحة التحكم',
     products: 'المنتجات',
+    brands: 'الماركات',
     suppliers: 'الموردين',
     categories: 'الأصناف',
     orders: 'الطلبات',

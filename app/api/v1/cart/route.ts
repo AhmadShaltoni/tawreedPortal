@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
 import { addToCartSchema } from '@/lib/validations'
+import { formatCartItem, CART_ITEM_INCLUDE } from '@/lib/cart-utils'
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -15,28 +16,20 @@ export async function GET(request: NextRequest) {
 
   const cartItems = await db.cartItem.findMany({
     where: { buyerId: user.id },
-    include: {
-      variant: {
-        include: {
-          product: {
-            include: {
-              category: { select: { id: true, name: true, nameEn: true, slug: true } },
-            },
-          },
-          units: { orderBy: { sortOrder: 'asc' } },
-        },
-      },
-      productUnit: true,
-    },
+    include: CART_ITEM_INCLUDE,
     orderBy: { createdAt: 'desc' },
   })
 
-  const total = cartItems.reduce((sum, item) => {
-    const unitPrice = item.productUnit?.price ?? item.variant.units.find(u => u.isDefault)?.price ?? 0
-    return sum + unitPrice * item.quantity
-  }, 0)
+  // Format each cart item with complete details
+  const formattedItems = await Promise.all(cartItems.map(item => formatCartItem(item)))
 
-  return apiResponse({ items: cartItems, total, itemCount: cartItems.length })
+  const total = formattedItems.reduce((sum, item) => sum + item.pricing.subtotal, 0)
+
+  return apiResponse({
+    items: formattedItems,
+    total: Math.round(total * 100) / 100,
+    itemCount: formattedItems.length,
+  })
 }
 
 // POST /api/v1/cart - Add item to cart
@@ -115,7 +108,7 @@ export async function POST(request: NextRequest) {
     cartItem = await db.cartItem.update({
       where: { id: existing.id },
       data: { quantity: newQuantity },
-      include: { variant: { include: { product: true } }, productUnit: true },
+      include: CART_ITEM_INCLUDE,
     })
   } else {
     // New item - create it
@@ -127,11 +120,12 @@ export async function POST(request: NextRequest) {
         variantOptionId: variantOptionId,
         quantity: validated.data.quantity,
       },
-      include: { variant: { include: { product: true } }, productUnit: true },
+      include: CART_ITEM_INCLUDE,
     })
   }
 
-  return apiResponse({ item: cartItem }, 201)
+  const formattedItem = await formatCartItem(cartItem)
+  return apiResponse({ item: formattedItem }, 201)
 }
 
 // DELETE /api/v1/cart - Clear cart

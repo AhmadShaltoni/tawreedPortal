@@ -11,10 +11,24 @@ export async function createBrand(formData: FormData): Promise<ActionResponse<{ 
   const { authorized, error } = await requireRole(['ADMIN'])
   if (!authorized) return { success: false, error: error ?? 'Not authorized' }
 
+  const name = formData.get('name') as string
+  let slug = formData.get('slug') as string || ''
+  
+  // Generate slug from name if not provided
+  if (!slug && name) {
+    slug = name
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+  }
+
   const rawData = {
-    name: formData.get('name'),
+    name,
     nameEn: formData.get('nameEn') || undefined,
-    slug: formData.get('slug'),
+    slug,
     description: formData.get('description') || undefined,
     descriptionEn: formData.get('descriptionEn') || undefined,
     isActive: formData.get('isActive') === 'true',
@@ -26,7 +40,7 @@ export async function createBrand(formData: FormData): Promise<ActionResponse<{ 
   }
 
   // Check slug uniqueness
-  const existing = await db.brand.findUnique({ where: { slug: validated.data.slug } })
+  const existing = await db.brand.findUnique({ where: { slug: validated.data.slug! } })
   if (existing) {
     return { success: false, errors: { slug: ['This slug is already taken'] } }
   }
@@ -46,7 +60,7 @@ export async function createBrand(formData: FormData): Promise<ActionResponse<{ 
     data: {
       name: validated.data.name,
       nameEn: validated.data.nameEn,
-      slug: validated.data.slug,
+      slug: validated.data.slug!,
       description: validated.data.description,
       descriptionEn: validated.data.descriptionEn,
       isActive: validated.data.isActive ?? true,

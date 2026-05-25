@@ -106,6 +106,13 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
   const collectionIdsJson = formData.get('collectionIds')
   const collectionIds: string[] = collectionIdsJson ? JSON.parse(collectionIdsJson as string) : []
 
+  // Parse variant options
+  const variantOptionsRaw = formData.get('variantOptions')
+  let variantOptionsMap: Record<number, Array<{ name: string; nameEn?: string; stock: number; priceOverride?: number | null; sortOrder?: number }>> = {}
+  if (variantOptionsRaw) {
+    try { variantOptionsMap = JSON.parse(variantOptionsRaw as string) } catch { /* ignore */ }
+  }
+
   // Create product, variants, and units in a transaction
   const product = await db.$transaction(async (tx) => {
     const p = await tx.product.create({
@@ -142,7 +149,8 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
       })
     }
 
-    for (const variant of validatedVariants) {
+    for (let i = 0; i < validatedVariants.length; i++) {
+      const variant = validatedVariants[i]
       const { units, ...variantData } = variant
       const v = await tx.productVariant.create({
         data: { ...variantData, productId: p.id },
@@ -151,6 +159,22 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
         await tx.productUnit.create({
           data: { ...unitData, variantId: v.id },
         })
+      }
+      // Create variant options if present
+      const options = variantOptionsMap[i]
+      if (options && options.length > 0) {
+        for (const opt of options) {
+          await tx.variantOption.create({
+            data: {
+              name: opt.name,
+              nameEn: opt.nameEn || null,
+              stock: opt.stock || 0,
+              priceOverride: opt.priceOverride ?? null,
+              sortOrder: opt.sortOrder ?? 0,
+              variantId: v.id,
+            },
+          })
+        }
       }
     }
 
@@ -326,7 +350,15 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
       // Delete all existing variants (cascades to units and options)
       await tx.productVariant.deleteMany({ where: { productId: id } })
 
-      for (const variant of validatedVariants) {
+      // Parse options from form data
+      const optionsRaw = formData.get('variantOptions')
+      let variantOptionsMap: Record<number, Array<{ name: string; nameEn?: string; stock: number; priceOverride?: number | null; sortOrder?: number }>> = {}
+      if (optionsRaw) {
+        try { variantOptionsMap = JSON.parse(optionsRaw as string) } catch { /* ignore */ }
+      }
+
+      for (let i = 0; i < validatedVariants.length; i++) {
+        const variant = validatedVariants[i]
         const { units, ...variantData } = variant
         const v = await tx.productVariant.create({
           data: { ...variantData, productId: id },
@@ -335,6 +367,22 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
           await tx.productUnit.create({
             data: { ...unitData, variantId: v.id },
           })
+        }
+        // Create variant options if present
+        const options = variantOptionsMap[i]
+        if (options && options.length > 0) {
+          for (const opt of options) {
+            await tx.variantOption.create({
+              data: {
+                name: opt.name,
+                nameEn: opt.nameEn || null,
+                stock: opt.stock || 0,
+                priceOverride: opt.priceOverride ?? null,
+                sortOrder: opt.sortOrder ?? 0,
+                variantId: v.id,
+              },
+            })
+          }
         }
       }
     }
@@ -459,7 +507,10 @@ export async function getProductById(id: string) {
       supplier: true,
       variants: {
         orderBy: { sortOrder: 'asc' },
-        include: { units: { orderBy: { sortOrder: 'asc' } } },
+        include: {
+          units: { orderBy: { sortOrder: 'asc' } },
+          options: { orderBy: { sortOrder: 'asc' } },
+        },
       },
     },
   })

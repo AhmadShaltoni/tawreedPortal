@@ -36,11 +36,35 @@ export async function GET(request: NextRequest) {
   ])
 
   return apiResponse({
-    orders: orders.map(order => ({
-      ...order,
-      buyerNotes: order.buyerNotes,
-      statusHistory: order.statusHistory,
-    })),
+    orders: orders.map(order => {
+      const formattedItems = order.items.map((item) => ({
+        id: item.id,
+        product: item.product,
+        // Size (variant) selected at order time
+        selectedSize: {
+          size: item.variantSize,
+          sizeEn: item.variantSizeEn,
+        },
+        // Flavor (option) selected at order time - if any
+        selectedFlavor: item.variantOptionName ? {
+          name: item.variantOptionName,
+          nameEn: item.variantOptionNameEn,
+        } : null,
+        // Selling unit selected at order time
+        selectedUnit: {
+          label: item.unitLabel,
+          labelEn: item.unitLabelEn,
+          piecesPerUnit: item.piecesPerUnit,
+        },
+        quantity: item.quantity,
+      }))
+      return {
+        ...order,
+        items: formattedItems,
+        buyerNotes: order.buyerNotes,
+        statusHistory: order.statusHistory,
+      }
+    }),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   })
 }

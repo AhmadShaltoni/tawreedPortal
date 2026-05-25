@@ -24,6 +24,13 @@ interface UnitEntry {
   isDefault: boolean
 }
 
+interface VariantOption {
+  name: string
+  nameEn: string
+  stock: number
+  priceOverride: number | null
+}
+
 interface VariantEntry {
   size: string
   sizeEn: string
@@ -33,6 +40,7 @@ interface VariantEntry {
   minOrderQuantity: number
   isDefault: boolean
   units: UnitEntry[]
+  options: VariantOption[]
 }
 
 interface ProductUnitData {
@@ -60,6 +68,16 @@ interface ProductVariantData {
   isActive: boolean
   sortOrder: number
   units: ProductUnitData[]
+  options: ProductOptionData[]
+}
+
+interface ProductOptionData {
+  id: string
+  name: string
+  nameEn: string | null
+  stock: number
+  priceOverride: number | null
+  sortOrder: number
 }
 
 interface CategoryNode {
@@ -123,7 +141,7 @@ function createDefaultUnit(): UnitEntry {
 }
 
 function createDefaultVariant(isDefault: boolean): VariantEntry {
-  return { size: '', sizeEn: '', sku: '', barcode: '', stock: 1, minOrderQuantity: 1, isDefault, units: [createDefaultUnit()] }
+  return { size: '', sizeEn: '', sku: '', barcode: '', stock: 1, minOrderQuantity: 1, isDefault, units: [createDefaultUnit()], options: [] }
 }
 
 function buildInitialVariants(product: Props['product']): VariantEntry[] {
@@ -148,6 +166,14 @@ function buildInitialVariants(product: Props['product']): VariantEntry[] {
             isDefault: u.isDefault,
           }))
         : [createDefaultUnit()],
+      options: v.options
+        ? v.options.map((o) => ({
+            name: o.name,
+            nameEn: o.nameEn || '',
+            stock: o.stock,
+            priceOverride: o.priceOverride ?? null,
+          }))
+        : [],
     }))
   }
   return [createDefaultVariant(true)]
@@ -258,6 +284,24 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
     setVariants(updated)
   }
 
+  function addVariantOption(vi: number) {
+    const updated = [...variants]
+    updated[vi] = { ...updated[vi], options: [...updated[vi].options, { name: '', nameEn: '', stock: 0, priceOverride: null }] }
+    setVariants(updated)
+  }
+
+  function removeVariantOption(vi: number, oi: number) {
+    const updated = [...variants]
+    updated[vi] = { ...updated[vi], options: updated[vi].options.filter((_, i) => i !== oi) }
+    setVariants(updated)
+  }
+
+  function updateVariantOption(vi: number, oi: number, field: keyof VariantOption, value: string | number | null) {
+    const updated = [...variants]
+    updated[vi].options[oi] = { ...updated[vi].options[oi], [field]: value }
+    setVariants(updated)
+  }
+
   function removeUnit(vi: number, ui: number) {
     const updated = [...variants]
     const units = updated[vi].units.filter((_, i) => i !== ui)
@@ -303,6 +347,21 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
       units: v.units.map((u, ui) => ({ ...u, sortOrder: ui })),
     }))
     formData.set('variants', JSON.stringify(variantsPayload))
+
+    // Build options map keyed by variant index
+    const variantOptionsMap: Record<number, Array<{ name: string; nameEn?: string; stock: number; priceOverride?: number | null; sortOrder: number }>> = {}
+    variants.forEach((v, vi) => {
+      if (v.options.length > 0) {
+        variantOptionsMap[vi] = v.options.map((o, oi) => ({
+          name: o.name,
+          nameEn: o.nameEn || undefined,
+          stock: o.stock,
+          priceOverride: o.priceOverride,
+          sortOrder: oi,
+        }))
+      }
+    })
+    formData.set('variantOptions', JSON.stringify(variantOptionsMap))
 
     const result = await updateProduct(product.id, formData)
 
@@ -477,14 +536,66 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.stock}</label>
-                    <input type="number" min="0" value={variant.stock} onChange={(e) => updateVariant(vi, 'stock', parseInt(e.target.value) || 0)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" required />
-                  </div>
+                  {variant.options.length === 0 && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.stock}</label>
+                      <input type="number" min="0" value={variant.stock} onChange={(e) => updateVariant(vi, 'stock', parseInt(e.target.value) || 0)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" required />
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.minOrderQuantity}</label>
                     <input type="number" min="1" value={variant.minOrderQuantity} onChange={(e) => updateVariant(vi, 'minOrderQuantity', parseInt(e.target.value) || 1)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" required />
                   </div>
+                </div>
+
+                {/* Variant Options (Flavors) */}
+                <div className="border-t pt-3 mt-3">
+                  <div className={`flex items-center justify-between mb-3 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                    <h4 className="text-sm font-semibold text-gray-700">النكهات / الخيارات (اختياري)</h4>
+                    <button type="button" onClick={() => addVariantOption(vi)} className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium">
+                      <Plus className="w-3 h-3" />
+                      إضافة نكهة
+                    </button>
+                  </div>
+
+                  {variant.options.length === 0 ? (
+                    <p className="text-xs text-gray-500 italic">لم يتم إضافة نكهات بعد. اضغط أعلاه لإضافة نكهات متعددة (مثل: أحمر، أخضر، إلخ)</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {variant.options.map((option, oi) => (
+                        <div key={oi} className="border rounded-lg p-3 bg-gray-50/50 space-y-2">
+                          <div className={`flex items-center justify-between ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                            <span className="text-xs font-medium text-gray-600">النكهة #{oi + 1}</span>
+                            {variant.options.length > 1 && (
+                              <button type="button" onClick={() => removeVariantOption(vi, oi)} className="text-red-400 hover:text-red-600">
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">اسم النكهة (عربي) *</label>
+                              <input type="text" value={option.name} onChange={(e) => updateVariantOption(vi, oi, 'name', e.target.value)} placeholder="مثال: أحمر" className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" required />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">اسم النكهة (إنجليزي)</label>
+                              <input type="text" value={option.nameEn} onChange={(e) => updateVariantOption(vi, oi, 'nameEn', e.target.value)} placeholder="e.g., Red" dir="ltr" className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">المخزون المتاح *</label>
+                              <input type="number" min="0" value={option.stock} onChange={(e) => updateVariantOption(vi, oi, 'stock', parseInt(e.target.value) || 0)} className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" required />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">إضافة سعر (اختياري)</label>
+                              <input type="number" step="0.01" min="0" value={option.priceOverride ?? ''} onChange={(e) => updateVariantOption(vi, oi, 'priceOverride', e.target.value ? parseFloat(e.target.value) : null)} placeholder="مثال: 2.5" className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t pt-3 mt-3">

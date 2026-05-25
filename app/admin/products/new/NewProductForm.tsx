@@ -326,9 +326,23 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
       isDefault: v.isDefault,
       sortOrder: vi,
       units: v.units.map((u, ui) => ({ ...u, sortOrder: ui })),
-      options: v.options.map((o, oi) => ({ ...o, sortOrder: oi })),
     }))
     formData.set('variants', JSON.stringify(variantsPayload))
+
+    // Build options map keyed by variant index
+    const variantOptionsMap: Record<number, Array<{ name: string; nameEn?: string; stock: number; priceOverride?: number | null; sortOrder: number }>> = {}
+    variants.forEach((v, vi) => {
+      if (v.options.length > 0) {
+        variantOptionsMap[vi] = v.options.map((o, oi) => ({
+          name: o.name,
+          nameEn: o.nameEn || undefined,
+          stock: o.stock,
+          priceOverride: o.priceOverride,
+          sortOrder: oi,
+        }))
+      }
+    })
+    formData.set('variantOptions', JSON.stringify(variantOptionsMap))
 
     const result = await createProduct(formData)
 

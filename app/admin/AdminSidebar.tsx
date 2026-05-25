@@ -15,7 +15,8 @@ import {
   Package2,
   Truck,
   BarChart3,
-  Gift
+  Gift,
+  Sparkles
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/LanguageContext'
@@ -27,6 +28,7 @@ export function AdminSidebar() {
   const links = [
     { href: '/admin', label: t.admin.dashboard, icon: LayoutDashboard, exact: true },
     { href: '/admin/products', label: t.admin.products, icon: Package },
+    { href: '/admin/brands', label: t.admin.brands || 'الماركات', icon: Sparkles },
     { href: '/admin/suppliers', label: t.admin.suppliers || 'الموردين', icon: Truck },
     { href: '/admin/categories', label: t.admin.categories, icon: FolderTree },
     { href: '/admin/orders', label: t.admin.orders, icon: ShoppingCart },

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
 import { updateCartItemSchema } from '@/lib/validations'
+import { formatCartItem, CART_ITEM_INCLUDE } from '@/lib/cart-utils'
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -20,7 +21,7 @@ export async function PATCH(
 
   const cartItem = await db.cartItem.findUnique({
     where: { id: itemId },
-    include: { variant: true },
+    include: { variant: { include: { options: { where: { isActive: true } } } }, variantOption: true },
   })
 
   if (!cartItem || cartItem.buyerId !== user.id) {
@@ -33,18 +34,26 @@ export async function PATCH(
     return apiResponse({ error: 'Validation failed', errors: validated.error.flatten().fieldErrors }, 400)
   }
 
-  // Check stock
-  if (cartItem.variant.stock < validated.data.quantity) {
-    return apiError(`Only ${cartItem.variant.stock} items available`, 400)
+  // Check stock based on whether option is selected
+  if (cartItem.variantOptionId) {
+    const option = await db.variantOption.findUnique({ where: { id: cartItem.variantOptionId } })
+    if (!option || option.stock < validated.data.quantity) {
+      return apiError(`Only ${option?.stock ?? 0} items available for this option`, 400)
+    }
+  } else {
+    if (cartItem.variant.stock < validated.data.quantity) {
+      return apiError(`Only ${cartItem.variant.stock} items available`, 400)
+    }
   }
 
   const updated = await db.cartItem.update({
     where: { id: itemId },
     data: { quantity: validated.data.quantity },
-    include: { variant: { include: { product: true } } },
+    include: CART_ITEM_INCLUDE,
   })
 
-  return apiResponse({ item: updated })
+  const formattedItem = await formatCartItem(updated)
+  return apiResponse({ item: formattedItem })
 }
 
 // DELETE /api/v1/cart/[itemId] - Remove item from cart

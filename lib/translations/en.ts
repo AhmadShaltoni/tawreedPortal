@@ -508,6 +508,7 @@ export const en: TranslationKeys = {
   admin: {
     dashboard: 'Dashboard',
     products: 'Products',
+    brands: 'Brands',
     suppliers: 'Suppliers',
     categories: 'Categories',
     orders: 'Orders',
