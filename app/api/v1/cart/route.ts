@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
 
   // Validate variantOptionId if provided
   let variantOptionId: string | null = null
+  let selectedOptionStock: number | null = null
   if (validated.data.variantOptionId) {
     const variantOption = await db.variantOption.findUnique({
       where: { id: validated.data.variantOptionId },
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
       return apiError(`Only ${variantOption.stock} items available for this option`, 400)
     }
     variantOptionId = variantOption.id
+    selectedOptionStock = variantOption.stock
   } else if (variant.options.length > 0) {
     // Variant has options but none selected — require selection
     return apiError('Please select an option (e.g., flavor)', 400)
@@ -105,6 +107,11 @@ export async function POST(request: NextRequest) {
   if (existing) {
     // Item already exists - increment the quantity
     const newQuantity = existing.quantity + validated.data.quantity
+    const availableStock = selectedOptionStock ?? variant.stock
+    if (availableStock < newQuantity) {
+      return apiError(`Only ${availableStock} items available. You already have ${existing.quantity} in your cart`, 400)
+    }
+
     cartItem = await db.cartItem.update({
       where: { id: existing.id },
       data: { quantity: newQuantity },

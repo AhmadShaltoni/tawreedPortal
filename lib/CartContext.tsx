@@ -11,7 +11,7 @@ interface CartContextType {
   error: string | null
   
   // Operations
-  addItem: (variantId: string, quantity: number, productUnitId?: string) => Promise<void>
+  addItem: (variantId: string, quantity: number, productUnitId?: string, variantOptionId?: string) => Promise<void>
   updateItem: (itemId: string, quantity: number) => Promise<void>
   removeItem: (itemId: string) => Promise<void>
   clearCart: () => Promise<void>
@@ -76,13 +76,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   // Add item to cart
-  const addItem = useCallback(async (variantId: string, quantity: number, productUnitId?: string) => {
+  const addItem = useCallback(async (variantId: string, quantity: number, productUnitId?: string, variantOptionId?: string) => {
     setError(null)
     try {
       const response = await fetch('/api/v1/cart', {
         method: 'POST',
         headers: buildHeaders(true),
-        body: JSON.stringify({ variantId, quantity, productUnitId }),
+        body: JSON.stringify({ variantId, quantity, productUnitId, variantOptionId }),
       })
 
       if (!response.ok) {

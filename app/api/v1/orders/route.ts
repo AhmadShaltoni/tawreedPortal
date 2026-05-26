@@ -3,6 +3,26 @@ import { db } from '@/lib/db'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
 import { createOrderFromCartSchema } from '@/lib/validations'
 import { sendPushToRole } from '@/lib/push-notifications'
+import type { DiscountCode } from '@prisma/client'
+
+class OrderValidationError extends Error {
+  status: number
+
+  constructor(message: string, status = 400) {
+    super(message)
+    this.name = 'OrderValidationError'
+    this.status = status
+  }
+}
+
+function describeCartItem(item: {
+  variant: { size: string; product: { name: string } }
+  variantOption?: { name: string } | null
+}) {
+  return item.variantOption
+    ? `${item.variant.product.name} - ${item.variant.size} - ${item.variantOption.name}`
+    : `${item.variant.product.name} - ${item.variant.size}`
+}
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -84,7 +104,12 @@ export async function POST(request: NextRequest) {
   const cartItems = await db.cartItem.findMany({
     where: { buyerId: user.id },
     include: {
-      variant: { include: { product: true } },
+      variant: {
+        include: {
+          product: true,
+          options: { where: { isActive: true }, select: { id: true } },
+        },
+      },
       productUnit: true,
       variantOption: true,
     },
@@ -102,14 +127,26 @@ export async function POST(request: NextRequest) {
     if (!item.variant.isActive) {
       return apiError(`Variant "${item.variant.size}" is no longer available`, 400)
     }
+    if (item.productUnit && item.productUnit.variantId !== item.variantId) {
+      return apiError(`Invalid cart item unit for "${describeCartItem(item)}"`, 400)
+    }
+    if (item.variantOptionId && !item.variantOption) {
+      return apiError(`Selected option for "${item.variant.product.name} - ${item.variant.size}" is no longer available`, 400)
+    }
+    if (!item.variantOption && item.variant.options.length > 0) {
+      return apiError(`Please select an option for "${item.variant.product.name} - ${item.variant.size}"`, 400)
+    }
     // Check stock: option-level if option selected, otherwise variant-level
     if (item.variantOption) {
+      if (item.variantOption.variantId !== item.variantId || !item.variantOption.isActive) {
+        return apiError(`Option "${item.variantOption.name}" is no longer available for "${item.variant.product.name} - ${item.variant.size}"`, 400)
+      }
       if (item.variantOption.stock < item.quantity) {
-        return apiError(`Insufficient stock for "${item.variant.product.name} - ${item.variant.size} - ${item.variantOption.name}". Available: ${item.variantOption.stock}`, 400)
+        return apiError(`Insufficient stock for "${describeCartItem(item)}". Available: ${item.variantOption.stock}`, 400)
       }
     } else {
       if (item.variant.stock < item.quantity) {
-        return apiError(`Insufficient stock for "${item.variant.product.name} - ${item.variant.size}". Available: ${item.variant.stock}`, 400)
+        return apiError(`Insufficient stock for "${describeCartItem(item)}". Available: ${item.variant.stock}`, 400)
       }
     }
   }
@@ -121,7 +158,7 @@ export async function POST(request: NextRequest) {
   }, 0)
 
   // Validate coupon code if provided
-  let discountCode: any = null
+  let discountCode: (DiscountCode & { _count: { usages: number } }) | null = null
   let discountAmount = 0
   let finalPrice = totalPrice
 
@@ -167,96 +204,131 @@ export async function POST(request: NextRequest) {
   }
 
   // Create order in transaction
-  const order = await db.$transaction(async (tx) => {
-    // Create order
-    const newOrder = await tx.order.create({
-      data: {
-        totalPrice: finalPrice,
-        deliveryAddress: validated.data.deliveryAddress,
-        deliveryCity: validated.data.deliveryCity,
-        buyerNotes: validated.data.buyerNotes,
-        buyerId: user.id,
-        status: 'PENDING',
-        statusHistory: [
-          { status: 'PENDING', timestamp: new Date().toISOString(), note: null },
-        ],
-        items: {
-          create: cartItems.map((item) => {
-            const unitPrice = item.variantOption?.priceOverride ?? item.productUnit?.price ?? 0
-            const unit = item.productUnit?.unit ?? 'PIECE'
-            const piecesPerUnit = item.productUnit?.piecesPerUnit ?? 1
-            const unitLabel = item.productUnit?.label ?? null
-            const unitLabelEn = item.productUnit?.labelEn ?? null
-            return {
-              productId: item.variant.product.id,
-              productName: item.variant.product.name,
-              productNameEn: item.variant.product.nameEn,
-              productImage: item.variant.product.image,
-              variantSize: item.variant.size,
-              variantSizeEn: item.variant.sizeEn,
-              variantOptionName: item.variantOption?.name ?? null,
-              variantOptionNameEn: item.variantOption?.nameEn ?? null,
-              quantity: item.quantity,
-              unit,
-              pricePerUnit: unitPrice,
-              totalPrice: unitPrice * item.quantity,
-              piecesPerUnit,
-              unitLabel,
-              unitLabelEn,
-            }
-          }),
-        },
-      },
-      include: { items: true },
-    })
+  let order
+  try {
+    order = await db.$transaction(async (tx) => {
+      // Decrease stock atomically before creating the order. This prevents
+      // another checkout from consuming the same stock between verification and save.
+      for (const item of cartItems) {
+        if (item.variantOptionId) {
+          const updated = await tx.variantOption.updateMany({
+            where: {
+              id: item.variantOptionId,
+              variantId: item.variantId,
+              isActive: true,
+              stock: { gte: item.quantity },
+            },
+            data: { stock: { decrement: item.quantity } },
+          })
 
-    // Decrease stock: option-level if option selected, otherwise variant-level
-    for (const item of cartItems) {
-      if (item.variantOptionId) {
-        await tx.variantOption.update({
-          where: { id: item.variantOptionId },
-          data: { stock: { decrement: item.quantity } },
-        })
-      } else {
-        await tx.productVariant.update({
-          where: { id: item.variantId },
-          data: { stock: { decrement: item.quantity } },
+          if (updated.count !== 1) {
+            const current = await tx.variantOption.findUnique({
+              where: { id: item.variantOptionId },
+              select: { stock: true },
+            })
+            throw new OrderValidationError(`Insufficient stock for "${describeCartItem(item)}". Available: ${current?.stock ?? 0}`)
+          }
+        } else {
+          const updated = await tx.productVariant.updateMany({
+            where: {
+              id: item.variantId,
+              isActive: true,
+              product: { isActive: true },
+              stock: { gte: item.quantity },
+            },
+            data: { stock: { decrement: item.quantity } },
+          })
+
+          if (updated.count !== 1) {
+            const current = await tx.productVariant.findUnique({
+              where: { id: item.variantId },
+              select: { stock: true },
+            })
+            throw new OrderValidationError(`Insufficient stock for "${describeCartItem(item)}". Available: ${current?.stock ?? 0}`)
+          }
+        }
+      }
+
+      // Create order
+      const newOrder = await tx.order.create({
+        data: {
+          totalPrice: finalPrice,
+          deliveryAddress: validated.data.deliveryAddress,
+          deliveryCity: validated.data.deliveryCity,
+          buyerNotes: validated.data.buyerNotes,
+          buyerId: user.id,
+          status: 'PENDING',
+          statusHistory: [
+            { status: 'PENDING', timestamp: new Date().toISOString(), note: null },
+          ],
+          items: {
+            create: cartItems.map((item) => {
+              const unitPrice = item.variantOption?.priceOverride ?? item.productUnit?.price ?? 0
+              const unit = item.productUnit?.unit ?? 'PIECE'
+              const piecesPerUnit = item.productUnit?.piecesPerUnit ?? 1
+              const unitLabel = item.productUnit?.label ?? null
+              const unitLabelEn = item.productUnit?.labelEn ?? null
+              return {
+                productId: item.variant.product.id,
+                productName: item.variant.product.name,
+                productNameEn: item.variant.product.nameEn,
+                productImage: item.variant.product.image,
+                variantSize: item.variant.size,
+                variantSizeEn: item.variant.sizeEn,
+                variantOptionName: item.variantOption?.name ?? null,
+                variantOptionNameEn: item.variantOption?.nameEn ?? null,
+                quantity: item.quantity,
+                unit,
+                pricePerUnit: unitPrice,
+                totalPrice: unitPrice * item.quantity,
+                piecesPerUnit,
+                unitLabel,
+                unitLabelEn,
+              }
+            }),
+          },
+        },
+        include: { items: true },
+      })
+
+      // Clear cart
+      await tx.cartItem.deleteMany({ where: { buyerId: user.id } })
+
+      // Record coupon usage if coupon was applied
+      if (discountCode) {
+        await tx.discountCodeUsage.create({
+          data: {
+            discountCodeId: discountCode.id,
+            userId: user.id,
+            orderId: newOrder.id,
+            discountAmount,
+            orderTotal: totalPrice,
+          },
         })
       }
+
+      // Notify admins
+      const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } })
+      if (admins.length > 0) {
+        await tx.notification.createMany({
+          data: admins.map((admin) => ({
+            type: 'NEW_ORDER' as const,
+            title: 'طلب جديد',
+            message: `طلب جديد #${newOrder.orderNumber.slice(-8)} بقيمة ${totalPrice} د.أ`,
+            linkUrl: `/admin/orders/${newOrder.id}`,
+            userId: admin.id,
+          })),
+        })
+      }
+
+      return newOrder
+    })
+  } catch (err) {
+    if (err instanceof OrderValidationError) {
+      return apiError(err.message, err.status)
     }
-
-    // Clear cart
-    await tx.cartItem.deleteMany({ where: { buyerId: user.id } })
-
-    // Record coupon usage if coupon was applied
-    if (discountCode) {
-      await tx.discountCodeUsage.create({
-        data: {
-          discountCodeId: discountCode.id,
-          userId: user.id,
-          orderId: newOrder.id,
-          discountAmount,
-          orderTotal: totalPrice,
-        },
-      })
-    }
-
-    // Notify admins
-    const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } })
-    if (admins.length > 0) {
-      await tx.notification.createMany({
-        data: admins.map((admin) => ({
-          type: 'NEW_ORDER' as const,
-          title: 'طلب جديد',
-          message: `طلب جديد #${newOrder.orderNumber.slice(-8)} بقيمة ${totalPrice} د.أ`,
-          linkUrl: `/admin/orders/${newOrder.id}`,
-          userId: admin.id,
-        })),
-      })
-    }
-
-    return newOrder
-  })
+    throw err
+  }
 
   // Send push notification to admins (outside transaction)
   sendPushToRole('ADMIN', {
