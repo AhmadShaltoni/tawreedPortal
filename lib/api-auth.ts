@@ -13,9 +13,57 @@ interface ApiUser {
   storeName?: string | null
 }
 
-// Authenticate API requests via session cookie or Authorization header
+async function authenticateBearerToken(request: Request): Promise<{ user: ApiUser | null; error: string | null } | null> {
+  const authHeader = request.headers.get('Authorization')
+  if (!authHeader?.startsWith('Bearer ')) return null
+
+  const token = authHeader.slice(7)
+  try {
+    const secret = process.env.AUTH_SECRET
+    if (!secret) {
+      return { user: null, error: 'Server configuration error' }
+    }
+
+    // Decode the JWT token
+    const decoded = await decode({ token, salt: '', secret })
+    if (!decoded || !decoded.id) {
+      return { user: null, error: 'Invalid token' }
+    }
+
+    // Fetch user from database
+    const user = await db.user.findUnique({
+      where: { id: decoded.id as string },
+      select: { id: true, phone: true, email: true, username: true, role: true, storeName: true, isActive: true },
+    })
+
+    if (!user || !user.isActive) {
+      return { user: null, error: 'User not found or inactive' }
+    }
+
+    return {
+      user: {
+        id: user.id,
+        phone: user.phone,
+        email: user.email,
+        username: user.username,
+        role: user.role as UserRole,
+        storeName: user.storeName,
+      },
+      error: null,
+    }
+  } catch {
+    return { user: null, error: 'Invalid token' }
+  }
+}
+
+// Authenticate API requests via Authorization header or session cookie
 export async function authenticateApiRequest(request: Request): Promise<{ user: ApiUser | null; error: string | null }> {
-  // Try session auth first (for web requests)
+  // Mobile/API clients may still carry stale web cookies, so an explicit
+  // Authorization header must take precedence over session cookies.
+  const bearerAuth = await authenticateBearerToken(request)
+  if (bearerAuth) return bearerAuth
+
+  // Fall back to session auth for web requests.
   const session = await auth()
   if (session?.user) {
     return {
@@ -28,48 +76,6 @@ export async function authenticateApiRequest(request: Request): Promise<{ user: 
         storeName: session.user.storeName,
       },
       error: null,
-    }
-  }
-
-  // Try Authorization header (for mobile app)
-  const authHeader = request.headers.get('Authorization')
-  if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.slice(7)
-    try {
-      const secret = process.env.AUTH_SECRET
-      if (!secret) {
-        return { user: null, error: 'Server configuration error' }
-      }
-
-      // Decode the JWT token
-      const decoded = await decode({ token, salt: '', secret })
-      if (!decoded || !decoded.id) {
-        return { user: null, error: 'Invalid token' }
-      }
-
-      // Fetch user from database
-      const user = await db.user.findUnique({
-        where: { id: decoded.id as string },
-        select: { id: true, phone: true, email: true, username: true, role: true, storeName: true, isActive: true },
-      })
-
-      if (!user || !user.isActive) {
-        return { user: null, error: 'User not found or inactive' }
-      }
-
-      return {
-        user: {
-          id: user.id,
-          phone: user.phone,
-          email: user.email,
-          username: user.username,
-          role: user.role as UserRole,
-          storeName: user.storeName,
-        },
-        error: null,
-      }
-    } catch {
-      return { user: null, error: 'Invalid token' }
     }
   }
 

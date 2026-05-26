@@ -109,7 +109,18 @@ export async function POST(request: NextRequest) {
     const newQuantity = existing.quantity + validated.data.quantity
     const availableStock = selectedOptionStock ?? variant.stock
     if (availableStock < newQuantity) {
-      return apiError(`Only ${availableStock} items available. You already have ${existing.quantity} in your cart`, 400)
+      const existingWithDetails = await db.cartItem.findUnique({
+        where: { id: existing.id },
+        include: CART_ITEM_INCLUDE,
+      })
+      const formattedExisting = existingWithDetails ? await formatCartItem(existingWithDetails) : null
+
+      return apiResponse({
+        error: `Only ${availableStock} items available. You already have ${existing.quantity} in your cart`,
+        item: formattedExisting,
+        availableStock,
+        existingQuantity: existing.quantity,
+      }, 400)
     }
 
     cartItem = await db.cartItem.update({
