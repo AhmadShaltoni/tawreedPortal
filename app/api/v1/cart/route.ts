@@ -109,6 +109,7 @@ export async function POST(request: NextRequest) {
     const newQuantity = existing.quantity + validated.data.quantity
     const availableStock = selectedOptionStock ?? variant.stock
     if (availableStock < newQuantity) {
+      const remainingQuantity = Math.max(availableStock - existing.quantity, 0)
       const existingWithDetails = await db.cartItem.findUnique({
         where: { id: existing.id },
         include: CART_ITEM_INCLUDE,
@@ -116,10 +117,14 @@ export async function POST(request: NextRequest) {
       const formattedExisting = existingWithDetails ? await formatCartItem(existingWithDetails) : null
 
       return apiResponse({
-        error: `Only ${availableStock} items available. You already have ${existing.quantity} in your cart`,
+        error: remainingQuantity > 0
+          ? `Only ${remainingQuantity} more item${remainingQuantity === 1 ? '' : 's'} can be added. You already have ${existing.quantity} in your cart, and total available stock is ${availableStock}`
+          : `You already have the full available stock (${availableStock}) in your cart`,
         item: formattedExisting,
         availableStock,
         existingQuantity: existing.quantity,
+        requestedQuantity: validated.data.quantity,
+        remainingQuantity,
       }, 400)
     }
 
@@ -151,7 +156,19 @@ export async function DELETE(request: NextRequest) {
   const { user, error } = await authenticateApiRequest(request)
   if (!user) return apiError(error ?? 'Unauthorized', 401)
 
-  await db.cartItem.deleteMany({ where: { buyerId: user.id } })
+  const deleted = await db.cartItem.deleteMany({ where: { buyerId: user.id } })
+  const remainingItems = await db.cartItem.findMany({
+    where: { buyerId: user.id },
+    include: CART_ITEM_INCLUDE,
+    orderBy: { createdAt: 'desc' },
+  })
+  const formattedItems = await Promise.all(remainingItems.map(item => formatCartItem(item)))
 
-  return apiResponse({ message: 'Cart cleared' })
+  return apiResponse({
+    message: 'Cart cleared',
+    deletedCount: deleted.count,
+    items: formattedItems,
+    total: 0,
+    itemCount: formattedItems.length,
+  })
 }

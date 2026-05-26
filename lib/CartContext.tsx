@@ -160,9 +160,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         throw new Error(data.error || 'Failed to clear cart')
       }
 
-      setItems([])
-      setTotal(0)
-      setItemCount(0)
+      const data = await response.json()
+      setItems(data.items || [])
+      setTotal(data.total || 0)
+      setItemCount(data.itemCount || 0)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to clear cart'
       setError(errorMessage)
