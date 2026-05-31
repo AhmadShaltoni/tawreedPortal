@@ -44,15 +44,6 @@ export function NewCategoryForm({ categoryTree }: Props) {
     return lang === 'ar' ? item.name : (item.nameEn || item.name)
   }
 
-  function generateSlug(text: string) {
-    return text
-      .toLowerCase()
-      .replace(/\s+/g, '-')
-      .replace(/[^\u0600-\u06FFa-z0-9-]/g, '')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-  }
-
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) {
@@ -182,15 +173,14 @@ export function NewCategoryForm({ categoryTree }: Props) {
                 <button type="button" title={t.autoTranslate?.retryTranslate || 'ترجمة'} className="text-gray-400 hover:text-blue-600 p-1 transition-colors" onClick={() => translate.retry('nameEn', nameAr, nameEnRef)}><Languages className="w-4 h-4" /></button>
               </div>
             </div>
-            <Input
-              label={t.categoryManagement.slug}
-              name="slug"
-              dir="ltr"
-              required
-              placeholder="e.g. dairy-products"
-              defaultValue={generateSlug(nameAr)}
-              error={fieldErrors.slug?.[0]}
-            />
+
+            {/* Auto-generated slug info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+              <p className="font-medium mb-1">✅ {lang === 'ar' ? 'الرابط المختصر (Slug)' : 'URL Slug'}</p>
+              <p className="text-blue-700">{lang === 'ar' 
+                ? 'سيتم توليد الرابط المختصر تلقائياً من الاسم الإنجليزي عند الحفظ. مثال: "Grocery Supplies" → "grocery-supplies"'
+                : 'The URL slug will be automatically generated from the English name when saved. Example: "Grocery Supplies" → "grocery-supplies"'}</p>
+            </div>
             
             {/* Image Upload Field */}
             <div className="space-y-2">

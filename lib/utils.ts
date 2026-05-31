@@ -71,6 +71,20 @@ export function truncateText(text: string, maxLength: number): string {
   return text.slice(0, maxLength).trim() + '...'
 }
 
+// Generate slug from English text
+export function generateSlug(text: string): string {
+  // Convert to lowercase and trim
+  const slug = text
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')              // Multiple spaces → single dash
+    .replace(/[^\w-]/g, '')            // Remove all except word chars and dashes
+    .replace(/-+/g, '-')               // Multiple dashes → single dash
+    .replace(/^-+|-+$/g, '')           // Remove dashes from start/end
+  
+  return slug || 'untitled'
+}
+
 // Generate order number
 export function generateOrderNumber(): string {
   const prefix = 'ORD'

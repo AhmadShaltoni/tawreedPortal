@@ -236,14 +236,15 @@ export function EditCategoryForm({ category, categoryTree }: Props) {
                 <button type="button" title={t.autoTranslate?.retryTranslate || 'ترجمة'} className="text-gray-400 hover:text-blue-600 p-1 transition-colors" onClick={() => translate.retry('nameEn', nameArRef.current?.value || '', nameEnRef)}><Languages className="w-4 h-4" /></button>
               </div>
             </div>
-            <Input 
-              label={t.categoryManagement.slug} 
-              name="slug" 
-              dir="ltr" 
-              required 
-              defaultValue={category.slug} 
-              error={fieldErrors.slug?.[0]} 
-            />
+
+            {/* Auto-generated slug info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+              <p className="font-medium mb-1">🔗 {lang === 'ar' ? 'الرابط المختصر الحالي' : 'Current URL Slug'}</p>
+              <p className="font-mono text-blue-700 break-all">{category.slug}</p>
+              <p className="text-blue-600 text-xs mt-2">{lang === 'ar'
+                ? 'إذا غيرت الاسم الإنجليزي، سيتم توليد رابط جديد تلقائياً عند الحفظ'
+                : 'If you change the English name, a new slug will be auto-generated on save'}</p>
+            </div>
 
             {/* Image Upload Field */}
             <div className="space-y-2">

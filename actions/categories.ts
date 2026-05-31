@@ -4,8 +4,52 @@ import { db } from '@/lib/db'
 import { requireRole } from '@/lib/auth'
 import { createCategorySchema, updateCategorySchema } from '@/lib/validations'
 import { saveCategoryImage, deleteCategoryImage } from '@/lib/upload'
+import { generateSlug } from '@/lib/utils'
 import type { ActionResponse } from '@/types'
 import { revalidatePath } from 'next/cache'
+
+// ============================================
+// Helper Functions
+// ============================================
+
+/**
+ * Generate a unique slug from English name
+ * Automatically handles duplicates by appending numbers
+ */
+export async function generateUniqueSlug(
+  nameEn: string,
+  nameAr?: string,
+  excludeId?: string
+): Promise<string> {
+  const nameToUse = nameEn || nameAr || ''
+  
+  if (!nameToUse) {
+    throw new Error('يجب توفير اسم إنجليزي أو عربي')
+  }
+  
+  // Generate base slug from English name
+  let baseSlug = generateSlug(nameToUse)
+  let slug = baseSlug
+  let counter = 1
+
+  // Check for uniqueness
+  while (true) {
+    const existing = await db.category.findFirst({
+      where: {
+        slug: slug,
+        id: excludeId ? { not: excludeId } : undefined,
+      },
+    })
+
+    if (!existing) {
+      return slug // ✅ Unique slug found
+    }
+
+    // If exists, append number
+    counter++
+    slug = `${baseSlug}-${counter}`
+  }
+}
 
 // ============================================
 // CRUD Operations
@@ -15,11 +59,26 @@ export async function createCategory(formData: FormData): Promise<ActionResponse
   const { authorized, error } = await requireRole(['ADMIN'])
   if (!authorized) return { success: false, error: error ?? 'Not authorized' }
 
+  const name = formData.get('name') as string
+  const nameEn = formData.get('nameEn') as string
+  const parentIdInput = formData.get('parentId') as string | null
+
+  // Generate unique slug from English name
+  let generatedSlug: string
+  try {
+    generatedSlug = await generateUniqueSlug(nameEn, name)
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to generate slug',
+    }
+  }
+
   const rawData = {
-    name: formData.get('name'),
-    nameEn: formData.get('nameEn') || undefined,
-    slug: formData.get('slug'),
-    parentId: formData.get('parentId') || undefined,
+    name,
+    nameEn: nameEn || undefined,
+    slug: generatedSlug, // ✅ Use generated slug
+    parentId: parentIdInput || undefined,
     sortOrder: formData.get('sortOrder') || 0,
     isActive: formData.get('isActive') === 'true',
   }
@@ -27,12 +86,6 @@ export async function createCategory(formData: FormData): Promise<ActionResponse
   const validated = createCategorySchema.safeParse(rawData)
   if (!validated.success) {
     return { success: false, errors: validated.error.flatten().fieldErrors }
-  }
-
-  // Check slug uniqueness
-  const existing = await db.category.findUnique({ where: { slug: validated.data.slug } })
-  if (existing) {
-    return { success: false, error: 'A category with this slug already exists' }
   }
 
   // If parentId is provided, validate it
@@ -90,30 +143,43 @@ export async function updateCategory(id: string, formData: FormData): Promise<Ac
   const existing = await db.category.findUnique({ where: { id } })
   if (!existing) return { success: false, error: 'Category not found' }
 
+  const nameEn = formData.get('nameEn') as string
+  const name = formData.get('name') as string
+
+  // Generate new slug if English name changed
+  let generatedSlug = existing.slug
+  if (nameEn && nameEn !== existing.nameEn) {
+    try {
+      generatedSlug = await generateUniqueSlug(nameEn, name, id)
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to generate slug',
+      }
+    }
+  }
+
   const rawData: Record<string, unknown> = {}
-  const fields = ['name', 'nameEn', 'slug', 'sortOrder']
+  const fields = ['name', 'sortOrder']
   for (const field of fields) {
     const value = formData.get(field)
     if (value !== null && value !== '') rawData[field] = value
   }
+  if (nameEn) rawData.nameEn = nameEn
+  rawData.slug = generatedSlug // ✅ Use generated or existing slug
+
   const isActive = formData.get('isActive')
   if (isActive !== null) rawData.isActive = isActive === 'true'
 
   // Handle parentId change (moving category)
   const newParentId = formData.get('parentId')
   if (newParentId !== null) {
-    rawData.parentId = String(newParentId)
+    rawData.parentId = String(newParentId) || null
   }
 
   const validated = updateCategorySchema.safeParse(rawData)
   if (!validated.success) {
     return { success: false, errors: validated.error.flatten().fieldErrors }
-  }
-
-  // Check slug uniqueness if changed
-  if (validated.data.slug && validated.data.slug !== existing.slug) {
-    const slugExists = await db.category.findUnique({ where: { slug: validated.data.slug } })
-    if (slugExists) return { success: false, error: 'A category with this slug already exists' }
   }
 
   // Handle parent change
