@@ -41,6 +41,8 @@ interface Props {
       productImage: string | null
       variantSize: string | null
       variantSizeEn: string | null
+      variantOptionName: string | null
+      variantOptionNameEn: string | null
       unitLabel: string | null
       unitLabelEn: string | null
       quantity: number
@@ -122,7 +124,12 @@ export function OrderDetailClient({ order }: Props) {
                       </p>
                       <div className="text-sm text-gray-600 space-y-0.5">
                         {item.variantSize && (
-                          <p>{lang === 'ar' ? item.variantSize : (item.variantSizeEn || item.variantSize)}</p>
+                          <p className="font-medium">{lang === 'ar' ? item.variantSize : (item.variantSizeEn || item.variantSize)}</p>
+                        )}
+                        {item.variantOptionName && (
+                          <p className="text-blue-600">
+                            {lang === 'ar' ? `نكهة: ${item.variantOptionName}` : `Flavor: ${item.variantOptionNameEn || item.variantOptionName}`}
+                          </p>
                         )}
                         {item.unitLabel && (
                           <p>{lang === 'ar' ? item.unitLabel : (item.unitLabelEn || item.unitLabel)}</p>
