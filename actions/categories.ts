@@ -43,12 +43,6 @@ export async function createCategory(formData: FormData): Promise<ActionResponse
     if (!parent) return { success: false, error: 'Parent category not found' }
     if (!parent.isActive) return { success: false, error: 'Parent category is inactive' }
 
-    // Ensure parent doesn't have products (leaf → branch transition blocked)
-    const parentProductCount = await db.product.count({ where: { categoryId: parent.id } })
-    if (parentProductCount > 0) {
-      return { success: false, error: 'لا يمكن إضافة صنف فرعي لصنف يحتوي على منتجات. انقل المنتجات أولاً.' }
-    }
-
     parentDepth = parent.depth
     parentPath = parent.path
   }
@@ -139,12 +133,6 @@ export async function updateCategory(id: string, formData: FormData): Promise<Ac
       if (descendantIds.includes(targetParentId)) {
         return { success: false, error: 'لا يمكن نقل صنف ليكون تابعاً لأحد فروعه' }
       }
-      // Ensure new parent doesn't have products
-      const parentProductCount = await db.product.count({ where: { categoryId: targetParentId } })
-      if (parentProductCount > 0) {
-        return { success: false, error: 'لا يمكن النقل لصنف يحتوي على منتجات' }
-      }
-
       const newParent = await db.category.findUnique({ where: { id: targetParentId } })
       if (!newParent) return { success: false, error: 'Parent category not found' }
     }
@@ -340,7 +328,6 @@ export async function getCategoryDescendantIds(categoryId: string): Promise<stri
 
 /**
  * Get all leaf categories (categories with no children).
- * These are the only categories where products can be assigned.
  */
 export async function getLeafCategories(includeInactive = false) {
   const where: Record<string, unknown> = {}

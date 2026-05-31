@@ -54,7 +54,7 @@
 ### العلاقة
 ```
 Category (1) ──< (N) Category  (self-referencing via parentId)
-Category (1) ──< (N) Product   (products only on leaf categories)
+Category (1) ──< (N) Product   (products can be assigned at any level)
 ```
 
 ---
@@ -321,12 +321,13 @@ GET /api/v1/products?categoryId=cm1abc&includeDescendants=true
 ```
 Screen 1: GET /api/v1/categories                    → عرض roots
 Screen 2: GET /api/v1/categories?parentId=xxx        → عرض أبناء
-Screen 3: GET /api/v1/products?categoryId=xxx        → عرض منتجات (leaf)
+Screen 3: GET /api/v1/products?categoryId=xxx        → عرض منتجات هذا المستوى
 ```
 
-**كيف تعرف إذا تنتقل لأبناء أم منتجات؟**
+**كيف تعرف ما الذي تعرضه؟**
 - إذا `hasChildren === true` ← جلب أبناء (categories)
-- إذا `hasChildren === false` ← جلب منتجات (products)
+- المنتجات قد تكون موجودة في نفس المستوى بغض النظر عن `hasChildren`
+- لعرض الاثنين معاً: استدعِ `/categories?parentId=xxx` و `/products?categoryId=xxx` في نفس الشاشة
 
 ### النمط 2: Expandable Tree (شجرة قابلة للتوسيع)
 
