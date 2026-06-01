@@ -42,6 +42,9 @@ interface VariantEntry {
   stock: number
   minOrderQuantity: number
   isDefault: boolean
+  imageFile: File | null
+  imagePreview: string | null
+  existingImage: string | null
   units: UnitEntry[]
   options: VariantOption[]
 }
@@ -63,6 +66,7 @@ interface ProductVariantData {
   id: string
   size: string
   sizeEn: string | null
+  image: string | null
   sku: string | null
   barcode: string | null
   stock: number
@@ -145,7 +149,7 @@ function createDefaultUnit(): UnitEntry {
 }
 
 function createDefaultVariant(isDefault: boolean): VariantEntry {
-  return { size: '', sizeEn: '', sku: '', barcode: '', stock: 1, minOrderQuantity: 1, isDefault, units: [createDefaultUnit()], options: [] }
+  return { size: '', sizeEn: '', sku: '', barcode: '', stock: 1, minOrderQuantity: 1, isDefault, imageFile: null, imagePreview: null, existingImage: null, units: [createDefaultUnit()], options: [] }
 }
 
 function buildInitialVariants(product: Props['product']): VariantEntry[] {
@@ -158,6 +162,9 @@ function buildInitialVariants(product: Props['product']): VariantEntry[] {
       stock: v.stock,
       minOrderQuantity: v.minOrderQuantity,
       isDefault: v.isDefault,
+      imageFile: null,
+      imagePreview: v.image || null,
+      existingImage: v.image || null,
       units: v.units.length > 0
         ? v.units.map((u) => ({
             unit: u.unit,
@@ -370,9 +377,15 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
     })
     formData.set('variantOptions', JSON.stringify(variantOptionsMap))
 
-    // Attach option image files (new uploads)
+    // Attach variant image files (new uploads) and preserve existing
+    const existingVariantImages: Record<string, string> = {}
     const existingOptionImages: Record<string, string> = {}
     variants.forEach((v, vi) => {
+      if (v.imageFile) {
+        formData.set(`variantImage_${vi}`, v.imageFile)
+      } else if (v.existingImage) {
+        existingVariantImages[`variantImage_${vi}`] = v.existingImage
+      }
       v.options.forEach((o, oi) => {
         if (o.imageFile) {
           formData.set(`optionImage_${vi}_${oi}`, o.imageFile)
@@ -381,6 +394,7 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
         }
       })
     })
+    formData.set('existingVariantImages', JSON.stringify(existingVariantImages))
     formData.set('existingOptionImages', JSON.stringify(existingOptionImages))
 
     const result = await updateProduct(product.id, formData)
@@ -542,6 +556,44 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
                     <label className="block text-xs font-medium text-gray-600 mb-1">{t.productManagement.variantSizeEn}</label>
                     <input type="text" value={variant.sizeEn} onChange={(e) => updateVariant(vi, 'sizeEn', e.target.value)} placeholder="e.g., 2kg" dir="ltr" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
                   </div>
+                </div>
+
+                {/* Variant Image */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">صورة الحجم (اختياري)</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null
+                        const updated = [...variants]
+                        updated[vi] = {
+                          ...updated[vi],
+                          imageFile: file,
+                          imagePreview: file ? URL.createObjectURL(file) : updated[vi].existingImage,
+                          existingImage: file ? null : updated[vi].existingImage,
+                        }
+                        setVariants(updated)
+                      }}
+                      className="text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                    />
+                    {(variant.imagePreview || variant.existingImage) && (
+                      <div className="relative">
+                        <img src={variant.imagePreview || variant.existingImage || ''} alt="" className="w-12 h-12 object-cover rounded-lg border" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...variants]
+                            updated[vi] = { ...updated[vi], imageFile: null, imagePreview: null, existingImage: null }
+                            setVariants(updated)
+                          }}
+                          className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px]"
+                        >×</button>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1">صورة خاصة بهذا الحجم (مثال: صورة علبة زجاج مقابل حديد)</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

@@ -115,10 +115,16 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
 
   // Upload option images (keyed by "optionImage_{variantIndex}_{optionIndex}")
   const optionImagesMap: Record<string, string> = {}
+  // Upload variant images (keyed by "variantImage_{variantIndex}")
+  const variantImagesMap: Record<string, string> = {}
   for (const [key, value] of formData.entries()) {
     if (key.startsWith('optionImage_') && value instanceof File && value.size > 0) {
       const imageUrl = await saveProductImage(value)
       optionImagesMap[key] = imageUrl
+    }
+    if (key.startsWith('variantImage_') && value instanceof File && value.size > 0) {
+      const imageUrl = await saveProductImage(value)
+      variantImagesMap[key] = imageUrl
     }
   }
 
@@ -161,8 +167,10 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
     for (let i = 0; i < validatedVariants.length; i++) {
       const variant = validatedVariants[i]
       const { units, ...variantData } = variant
+      const variantImageKey = `variantImage_${i}`
+      const variantImage = variantImagesMap[variantImageKey] || null
       const v = await tx.productVariant.create({
-        data: { ...variantData, productId: p.id },
+        data: { ...variantData, image: variantImage, productId: p.id },
       })
       for (const unitData of units) {
         await tx.productUnit.create({
@@ -372,10 +380,16 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
 
       // Upload option images (keyed by "optionImage_{variantIndex}_{optionIndex}")
       const optionImagesMap: Record<string, string> = {}
+      // Upload variant images (keyed by "variantImage_{variantIndex}")
+      const variantImagesMap: Record<string, string> = {}
       for (const [key, value] of formData.entries()) {
         if (key.startsWith('optionImage_') && value instanceof File && value.size > 0) {
           const imageUrl = await saveProductImage(value)
           optionImagesMap[key] = imageUrl
+        }
+        if (key.startsWith('variantImage_') && value instanceof File && value.size > 0) {
+          const imageUrl = await saveProductImage(value)
+          variantImagesMap[key] = imageUrl
         }
       }
 
@@ -386,11 +400,20 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
         try { existingOptionImages = JSON.parse(existingOptionImagesRaw as string) } catch { /* ignore */ }
       }
 
+      // Parse existing variant images (already uploaded, passed as URLs)
+      const existingVariantImagesRaw = formData.get('existingVariantImages')
+      let existingVariantImages: Record<string, string> = {}
+      if (existingVariantImagesRaw) {
+        try { existingVariantImages = JSON.parse(existingVariantImagesRaw as string) } catch { /* ignore */ }
+      }
+
       for (let i = 0; i < validatedVariants.length; i++) {
         const variant = validatedVariants[i]
         const { units, ...variantData } = variant
+        const variantImageKey = `variantImage_${i}`
+        const variantImage = variantImagesMap[variantImageKey] || existingVariantImages[variantImageKey] || null
         const v = await tx.productVariant.create({
-          data: { ...variantData, productId: id },
+          data: { ...variantData, image: variantImage, productId: id },
         })
         for (const unitData of units) {
           await tx.productUnit.create({

@@ -605,6 +605,7 @@ model ProductVariant {
   // Size info
   size            String    // Arabic size label: "2 كيلو", "4 كيلو"
   sizeEn          String?   // English size label: "2kg", "4kg"
+  image           String?   // Optional image URL (Cloudinary) for this variant/size
   
   // Inventory (per variant — used when variant has NO options)
   sku             String?   @unique
