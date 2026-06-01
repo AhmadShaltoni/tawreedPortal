@@ -113,6 +113,15 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
     try { variantOptionsMap = JSON.parse(variantOptionsRaw as string) } catch { /* ignore */ }
   }
 
+  // Upload option images (keyed by "optionImage_{variantIndex}_{optionIndex}")
+  const optionImagesMap: Record<string, string> = {}
+  for (const [key, value] of formData.entries()) {
+    if (key.startsWith('optionImage_') && value instanceof File && value.size > 0) {
+      const imageUrl = await saveProductImage(value)
+      optionImagesMap[key] = imageUrl
+    }
+  }
+
   // Create product, variants, and units in a transaction
   const product = await db.$transaction(async (tx) => {
     const p = await tx.product.create({
@@ -163,11 +172,15 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
       // Create variant options if present
       const options = variantOptionsMap[i]
       if (options && options.length > 0) {
-        for (const opt of options) {
+        for (let oi = 0; oi < options.length; oi++) {
+          const opt = options[oi]
+          const optionImageKey = `optionImage_${i}_${oi}`
+          const optionImage = optionImagesMap[optionImageKey] || null
           await tx.variantOption.create({
             data: {
               name: opt.name,
               nameEn: opt.nameEn || null,
+              image: optionImage,
               stock: opt.stock || 0,
               priceOverride: opt.priceOverride ?? null,
               sortOrder: opt.sortOrder ?? 0,
@@ -357,6 +370,22 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
         try { variantOptionsMap = JSON.parse(optionsRaw as string) } catch { /* ignore */ }
       }
 
+      // Upload option images (keyed by "optionImage_{variantIndex}_{optionIndex}")
+      const optionImagesMap: Record<string, string> = {}
+      for (const [key, value] of formData.entries()) {
+        if (key.startsWith('optionImage_') && value instanceof File && value.size > 0) {
+          const imageUrl = await saveProductImage(value)
+          optionImagesMap[key] = imageUrl
+        }
+      }
+
+      // Parse existing option images (already uploaded, passed as URLs)
+      const existingOptionImagesRaw = formData.get('existingOptionImages')
+      let existingOptionImages: Record<string, string> = {}
+      if (existingOptionImagesRaw) {
+        try { existingOptionImages = JSON.parse(existingOptionImagesRaw as string) } catch { /* ignore */ }
+      }
+
       for (let i = 0; i < validatedVariants.length; i++) {
         const variant = validatedVariants[i]
         const { units, ...variantData } = variant
@@ -371,11 +400,15 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
         // Create variant options if present
         const options = variantOptionsMap[i]
         if (options && options.length > 0) {
-          for (const opt of options) {
+          for (let oi = 0; oi < options.length; oi++) {
+            const opt = options[oi]
+            const optionImageKey = `optionImage_${i}_${oi}`
+            const optionImage = optionImagesMap[optionImageKey] || existingOptionImages[optionImageKey] || null
             await tx.variantOption.create({
               data: {
                 name: opt.name,
                 nameEn: opt.nameEn || null,
+                image: optionImage,
                 stock: opt.stock || 0,
                 priceOverride: opt.priceOverride ?? null,
                 sortOrder: opt.sortOrder ?? 0,

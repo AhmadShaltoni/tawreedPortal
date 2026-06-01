@@ -151,6 +151,7 @@ export async function GET(request: NextRequest) {
                 id: true,
                 name: true,
                 nameEn: true,
+                image: true,
                 stock: true,
                 priceOverride: true,
                 isActive: true,

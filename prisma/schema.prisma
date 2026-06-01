@@ -636,6 +636,7 @@ model VariantOption {
   id            String   @id @default(cuid())
   name          String   // Arabic: "تفاح", "برتقال"
   nameEn        String?  // English: "Apple", "Orange"
+  image         String?  // Optional image URL (Cloudinary) for this specific option
   stock         Int      @default(0)
   sku           String?  @unique
   barcode       String?

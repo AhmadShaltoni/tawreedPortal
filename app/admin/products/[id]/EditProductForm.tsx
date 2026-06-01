@@ -29,6 +29,9 @@ interface VariantOption {
   nameEn: string
   stock: number
   priceOverride: number | null
+  imageFile: File | null
+  imagePreview: string | null
+  existingImage: string | null
 }
 
 interface VariantEntry {
@@ -75,6 +78,7 @@ interface ProductOptionData {
   id: string
   name: string
   nameEn: string | null
+  image: string | null
   stock: number
   priceOverride: number | null
   sortOrder: number
@@ -172,6 +176,9 @@ function buildInitialVariants(product: Props['product']): VariantEntry[] {
             nameEn: o.nameEn || '',
             stock: o.stock,
             priceOverride: o.priceOverride ?? null,
+            imageFile: null,
+            imagePreview: o.image || null,
+            existingImage: o.image || null,
           }))
         : [],
     }))
@@ -286,7 +293,7 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
 
   function addVariantOption(vi: number) {
     const updated = [...variants]
-    updated[vi] = { ...updated[vi], options: [...updated[vi].options, { name: '', nameEn: '', stock: 0, priceOverride: null }] }
+    updated[vi] = { ...updated[vi], options: [...updated[vi].options, { name: '', nameEn: '', stock: 0, priceOverride: null, imageFile: null, imagePreview: null, existingImage: null }] }
     setVariants(updated)
   }
 
@@ -362,6 +369,19 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
       }
     })
     formData.set('variantOptions', JSON.stringify(variantOptionsMap))
+
+    // Attach option image files (new uploads)
+    const existingOptionImages: Record<string, string> = {}
+    variants.forEach((v, vi) => {
+      v.options.forEach((o, oi) => {
+        if (o.imageFile) {
+          formData.set(`optionImage_${vi}_${oi}`, o.imageFile)
+        } else if (o.existingImage) {
+          existingOptionImages[`optionImage_${vi}_${oi}`] = o.existingImage
+        }
+      })
+    })
+    formData.set('existingOptionImages', JSON.stringify(existingOptionImages))
 
     const result = await updateProduct(product.id, formData)
 
@@ -590,6 +610,42 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
                             <div>
                               <label className="block text-xs font-medium text-gray-600 mb-1">إضافة سعر (اختياري)</label>
                               <input type="number" step="0.01" min="0" value={option.priceOverride ?? ''} onChange={(e) => updateVariantOption(vi, oi, 'priceOverride', e.target.value ? parseFloat(e.target.value) : null)} placeholder="مثال: 2.5" className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                          </div>
+                          {/* Option Image Upload */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">صورة النكهة (اختياري)</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0] || null
+                                  const updated = [...variants]
+                                  updated[vi].options[oi] = {
+                                    ...updated[vi].options[oi],
+                                    imageFile: file,
+                                    imagePreview: file ? URL.createObjectURL(file) : updated[vi].options[oi].existingImage,
+                                    existingImage: file ? null : updated[vi].options[oi].existingImage,
+                                  }
+                                  setVariants(updated)
+                                }}
+                                className="w-full text-xs file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                              />
+                              {(option.imagePreview || option.existingImage) && (
+                                <div className="relative">
+                                  <img src={option.imagePreview || option.existingImage || ''} alt="" className="w-10 h-10 object-cover rounded border" />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...variants]
+                                      updated[vi].options[oi] = { ...updated[vi].options[oi], imageFile: null, imagePreview: null, existingImage: null }
+                                      setVariants(updated)
+                                    }}
+                                    className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center text-[8px]"
+                                  >×</button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>

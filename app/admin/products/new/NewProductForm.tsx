@@ -70,6 +70,8 @@ interface VariantOption {
   nameEn: string
   stock: number
   priceOverride: number | null
+  imageFile: File | null
+  imagePreview: string | null
 }
 
 interface VariantEntry {
@@ -256,7 +258,7 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
 
   function addVariantOption(vi: number) {
     const updated = [...variants]
-    updated[vi].options.push({ name: '', nameEn: '', stock: 0, priceOverride: null })
+    updated[vi].options.push({ name: '', nameEn: '', stock: 0, priceOverride: null, imageFile: null, imagePreview: null })
     setVariants(updated)
   }
 
@@ -343,6 +345,15 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
       }
     })
     formData.set('variantOptions', JSON.stringify(variantOptionsMap))
+
+    // Attach option image files
+    variants.forEach((v, vi) => {
+      v.options.forEach((o, oi) => {
+        if (o.imageFile) {
+          formData.set(`optionImage_${vi}_${oi}`, o.imageFile)
+        }
+      })
+    })
 
     const result = await createProduct(formData)
 
@@ -647,6 +658,30 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
                             <div>
                               <label className="block text-xs font-medium text-gray-600 mb-1">إضافة سعر (اختياري)</label>
                               <input type="number" step="0.01" min="0" value={option.priceOverride ?? ''} onChange={(e) => updateVariantOption(vi, oi, 'priceOverride', e.target.value ? parseFloat(e.target.value) : null)} placeholder="مثال: 2.5" className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                          </div>
+                          {/* Option Image Upload */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">صورة النكهة (اختياري)</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0] || null
+                                  const updated = [...variants]
+                                  updated[vi].options[oi] = {
+                                    ...updated[vi].options[oi],
+                                    imageFile: file,
+                                    imagePreview: file ? URL.createObjectURL(file) : null,
+                                  }
+                                  setVariants(updated)
+                                }}
+                                className="w-full text-xs file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                              />
+                              {option.imagePreview && (
+                                <img src={option.imagePreview} alt="" className="w-10 h-10 object-cover rounded border" />
+                              )}
                             </div>
                           </div>
                         </div>
