@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { toggleDiscountCode, deleteDiscountCode } from '@/actions/discount-codes'
-import { Edit, Trash2, Eye, Ticket, Users, Calendar } from 'lucide-react'
+import { Edit, Trash2, Eye, Ticket, Users, Calendar, BarChart3 } from 'lucide-react'
 
 interface CouponWithStats {
   id: string
@@ -151,6 +151,12 @@ export default function CouponListClient({ initialCoupons }: CouponListClientPro
 
               {/* Actions */}
               <div className="flex items-center gap-2">
+                <Link href={`/admin/coupons/${coupon.id}/report`}>
+                  <Button variant="outline" size="sm" title="تقرير الاستخدامات">
+                    <BarChart3 className="w-4 h-4" />
+                  </Button>
+                </Link>
+
                 <Link href={`/admin/coupons/${coupon.id}`}>
                   <Button variant="outline" size="sm">
                     <Edit className="w-4 h-4" />

@@ -3,7 +3,7 @@
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { createDiscountCodeSchema } from '@/lib/validations'
-import type { ActionResponse, DiscountCodeWithStats, DiscountCodeWithUsages } from '@/types'
+import type { ActionResponse, DiscountCodeWithStats, DiscountCodeWithUsages, DiscountCodeWithFullReport } from '@/types'
 
 interface DiscountCodeType {
   id: string
@@ -253,5 +253,56 @@ export async function deleteDiscountCode(
       return { success: false, error: 'كود الخصم غير موجود' }
     }
     return { success: false, error: 'فشل في حذف كود الخصم' }
+  }
+}
+
+/**
+ * Get a discount code with full usage report (admin only)
+ * Includes detailed user info: store name, city, area, address, registration date
+ */
+export async function getDiscountCodeReport(
+  id: string
+): Promise<ActionResponse<DiscountCodeWithFullReport>> {
+  try {
+    const user = await getCurrentUser()
+    if (!user || user.role !== 'ADMIN') {
+      return { success: false, error: 'غير مصرح بالدخول' }
+    }
+
+    const code = await db.discountCode.findUnique({
+      where: { id },
+      include: {
+        usages: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                phone: true,
+                storeName: true,
+                city: true,
+                businessAddress: true,
+                address: true,
+                role: true,
+                createdAt: true,
+                cityRef: { select: { name: true, nameEn: true } },
+                areaRef: { select: { name: true, nameEn: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        _count: { select: { usages: true } },
+      },
+    })
+
+    if (!code) {
+      return { success: false, error: 'كود الخصم غير موجود' }
+    }
+
+    return { success: true, data: code as unknown as DiscountCodeWithFullReport }
+  } catch (error) {
+    console.error('[discount-codes.getReport]', error)
+    return { success: false, error: 'فشل في جلب تقرير كود الخصم' }
   }
 }

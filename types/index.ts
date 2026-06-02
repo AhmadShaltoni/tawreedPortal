@@ -457,6 +457,25 @@ export type DiscountCodeWithUsages = DiscountCode & {
   _count: { usages: number }
 }
 
+export interface DiscountCodeUsageUser {
+  id: string
+  username: string
+  phone: string
+  storeName: string | null
+  city: string | null
+  businessAddress: string | null
+  address: string | null
+  role: UserRole
+  createdAt: Date
+  cityRef: { name: string; nameEn: string } | null
+  areaRef: { name: string; nameEn: string } | null
+}
+
+export type DiscountCodeWithFullReport = DiscountCode & {
+  usages: (DiscountCodeUsage & { user: DiscountCodeUsageUser })[]
+  _count: { usages: number }
+}
+
 export interface ValidateDiscountCodeResult {
   valid: boolean
   discountPercent?: number
