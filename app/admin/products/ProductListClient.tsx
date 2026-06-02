@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { Plus, Search, GripVertical, Trash2, X } from 'lucide-react'
+import { Plus, Search, GripVertical, Trash2, X, FileDown } from 'lucide-react'
 import { useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
@@ -11,6 +11,8 @@ import { Badge } from '@/components/ui/Badge'
 import { useLanguage } from '@/lib/LanguageContext'
 import { formatCurrency } from '@/lib/utils'
 import { toggleProductActive, deleteProduct, reorderProducts } from '@/actions/products'
+import { getAllProductsForExport } from '@/actions/export-products'
+import { generateProductsPDF, type ProductExportRow } from '@/lib/pdf-products'
 
 interface CategoryNode {
   id: string
@@ -87,6 +89,7 @@ export function ProductListClient({
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const dragCounter = useRef<Record<string, number>>({})
 
   // Sync when products prop changes (e.g. after server refresh)
@@ -105,6 +108,65 @@ export function ProductListClient({
     if (currentCategory) params.set('category', currentCategory)
     if (currentSupplier) params.set('supplier', currentSupplier)
     router.push(`/admin/products?${params.toString()}`)
+  }
+
+  async function handleExportPDF() {
+    setExporting(true)
+    try {
+      const allProducts = await getAllProductsForExport({
+        categoryId: currentCategory,
+        supplierId: currentSupplier,
+        search: currentSearch,
+        includeDescendants: true,
+      })
+
+      const rows: ProductExportRow[] = []
+
+      for (const p of allProducts) {
+        if (p.variants.length === 0) {
+          // Product with no variants - single row
+          rows.push({
+            name: p.name,
+            image: p.image,
+            stock: 0,
+            unitInfo: '',
+            wholesalePrice: '',
+            appPrice: '',
+          })
+        } else {
+          // Each variant is a separate row
+          for (const v of p.variants) {
+            const defaultUnit = v.units.find((u) => u.isDefault) || v.units[0]
+            const variantName = v.size
+              ? `${p.name} (${v.size})`
+              : p.name
+
+            const unitLabel = defaultUnit?.label && defaultUnit?.piecesPerUnit
+              ? `${defaultUnit.label} (${defaultUnit.piecesPerUnit})`
+              : defaultUnit?.label || ''
+
+            rows.push({
+              name: variantName,
+              image: v.image || p.image,
+              stock: v.stock,
+              unitInfo: unitLabel,
+              wholesalePrice: defaultUnit?.wholesalePrice != null
+                ? formatCurrency(defaultUnit.wholesalePrice)
+                : '',
+              appPrice: defaultUnit?.price != null
+                ? formatCurrency(defaultUnit.price)
+                : '',
+            })
+          }
+        }
+      }
+
+      await generateProductsPDF(rows)
+    } catch (error) {
+      console.error('PDF export failed:', error)
+    } finally {
+      setExporting(false)
+    }
   }
 
   function handleCategoryFilter(categoryId: string) {
@@ -207,12 +269,23 @@ export function ProductListClient({
       {/* Header */}
       <div className={`flex items-center justify-between ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
         <h1 className="text-2xl font-bold text-gray-900">{t.productManagement.title}</h1>
-        <Link href="/admin/products/new">
-          <Button variant="primary" className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
-            <Plus className="w-4 h-4" />
-            {t.productManagement.addProduct}
+        <div className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+          <Button
+            variant="outline"
+            onClick={handleExportPDF}
+            disabled={exporting}
+            className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}
+          >
+            <FileDown className="w-4 h-4" />
+            {exporting ? 'جاري التصدير...' : 'تصدير PDF'}
           </Button>
-        </Link>
+          <Link href="/admin/products/new">
+            <Button variant="primary" className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+              <Plus className="w-4 h-4" />
+              {t.productManagement.addProduct}
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}
