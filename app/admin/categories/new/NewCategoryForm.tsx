@@ -10,6 +10,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { useLanguage } from '@/lib/LanguageContext'
 import { createCategory } from '@/actions/categories'
 import { useAutoTranslate } from '@/lib/useAutoTranslate'
+import { compressImage } from '@/lib/compress-image'
 
 interface CategoryNode {
   id: string
@@ -47,11 +48,16 @@ export function NewCategoryForm({ categoryTree }: Props) {
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
+      compressImage(file).then((compressed) => {
+        const dt = new DataTransfer()
+        dt.items.add(compressed)
+        e.target.files = dt.files
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          setImagePreview(reader.result as string)
+        }
+        reader.readAsDataURL(compressed)
+      })
     }
   }
 

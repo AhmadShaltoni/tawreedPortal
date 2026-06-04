@@ -23,6 +23,9 @@ async function uploadToCloudinary(file: File, folder: string): Promise<string> {
   const result = await cloudinary.uploader.upload(base64, {
     folder: `tawreed/${folder}`,
     resource_type: 'image',
+    transformation: [
+      { quality: 'auto:good', fetch_format: 'auto' },
+    ],
   })
 
   return result.secure_url

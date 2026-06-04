@@ -12,6 +12,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { useLanguage } from '@/lib/LanguageContext'
 import { updateProduct, deleteProduct } from '@/actions/products'
 import { useAutoTranslate } from '@/lib/useAutoTranslate'
+import { compressImage } from '@/lib/compress-image'
 
 interface UnitEntry {
   unit: string
@@ -396,6 +397,17 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
     })
     formData.set('existingVariantImages', JSON.stringify(existingVariantImages))
     formData.set('existingOptionImages', JSON.stringify(existingOptionImages))
+
+    // Compress all images before upload
+    const mainImage = formData.get('image')
+    if (mainImage && mainImage instanceof File && mainImage.size > 0) {
+      formData.set('image', await compressImage(mainImage))
+    }
+    for (const [key, value] of Array.from(formData.entries())) {
+      if ((key.startsWith('variantImage_') || key.startsWith('optionImage_')) && value instanceof File) {
+        formData.set(key, await compressImage(value))
+      }
+    }
 
     const result = await updateProduct(product.id, formData)
 

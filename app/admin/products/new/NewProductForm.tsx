@@ -12,6 +12,7 @@ import { useLanguage } from '@/lib/LanguageContext'
 import { createProduct } from '@/actions/products'
 import { useAutoTranslate } from '@/lib/useAutoTranslate'
 import { getTagsByCategory } from '@/actions/tags'
+import { compressImage } from '@/lib/compress-image'
 
 interface CategoryNode {
   id: string
@@ -359,6 +360,17 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
         }
       })
     })
+
+    // Compress all images before upload
+    const mainImage = formData.get('image')
+    if (mainImage && mainImage instanceof File && mainImage.size > 0) {
+      formData.set('image', await compressImage(mainImage))
+    }
+    for (const [key, value] of Array.from(formData.entries())) {
+      if ((key.startsWith('variantImage_') || key.startsWith('optionImage_')) && value instanceof File) {
+        formData.set(key, await compressImage(value))
+      }
+    }
 
     const result = await createProduct(formData)
 
