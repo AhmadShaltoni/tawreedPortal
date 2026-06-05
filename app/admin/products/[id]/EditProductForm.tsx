@@ -202,12 +202,22 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>(product.supplierId || '')
+  const [mainImagePreview, setMainImagePreview] = useState<string | null>(null)
+  const [mainImageFile, setMainImageFile] = useState<File | null>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   const nameEnRef = useRef<HTMLInputElement>(null)
   const descEnRef = useRef<HTMLTextAreaElement>(null)
   const nameArRef = useRef<HTMLInputElement>(null)
   const descArRef = useRef<HTMLTextAreaElement>(null)
   const translate = useAutoTranslate()
+
+  // Cleanup object URL on unmount or when preview changes
+  useEffect(() => {
+    return () => {
+      if (mainImagePreview) URL.revokeObjectURL(mainImagePreview)
+    }
+  }, [mainImagePreview])
 
   useEffect(() => {
     if (product.nameEn) translate.markTouched('nameEn')
@@ -398,24 +408,35 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
     formData.set('existingVariantImages', JSON.stringify(existingVariantImages))
     formData.set('existingOptionImages', JSON.stringify(existingOptionImages))
 
-    // Compress all images before upload
-    const mainImage = formData.get('image')
-    if (mainImage && mainImage instanceof File && mainImage.size > 0) {
-      formData.set('image', await compressImage(mainImage))
+    // Replace the file input's value with the managed file state
+    formData.delete('image')
+    if (mainImageFile) {
+      formData.set('image', mainImageFile)
     }
-    for (const [key, value] of Array.from(formData.entries())) {
-      if ((key.startsWith('variantImage_') || key.startsWith('optionImage_')) && value instanceof File) {
-        formData.set(key, await compressImage(value))
+
+    try {
+      // Compress all images before upload
+      const mainImage = formData.get('image')
+      if (mainImage && mainImage instanceof File && mainImage.size > 0) {
+        formData.set('image', await compressImage(mainImage))
       }
-    }
+      for (const [key, value] of Array.from(formData.entries())) {
+        if ((key.startsWith('variantImage_') || key.startsWith('optionImage_')) && value instanceof File) {
+          formData.set(key, await compressImage(value))
+        }
+      }
 
-    const result = await updateProduct(product.id, formData)
+      const result = await updateProduct(product.id, formData)
 
-    if (result.success) {
-      router.push('/admin/products')
-    } else {
-      setError(result.error || null)
-      setFieldErrors(result.errors || {})
+      if (result.success) {
+        router.push('/admin/products')
+      } else {
+        setError(result.error || null)
+        setFieldErrors(result.errors || {})
+        setIsSubmitting(false)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'حدث خطأ أثناء رفع الصورة')
       setIsSubmitting(false)
     }
   }
@@ -456,10 +477,27 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
             <h2 className="text-lg font-semibold text-gray-900">{t.productManagement.editProduct}</h2>
           </CardHeader>
           <CardContent className="space-y-4">
-            {product.image && (
+            {(mainImagePreview || product.image) && (
               <div className="flex items-center gap-4">
-                <Image src={product.image} alt={product.name} width={80} height={80} className="rounded-lg object-cover" />
-                <p className="text-sm text-gray-500">{t.productManagement.image}</p>
+                <div className="relative">
+                  <Image src={mainImagePreview || product.image!} alt={product.name} width={80} height={80} className="rounded-lg object-cover" />
+                  {mainImagePreview && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMainImagePreview(null)
+                        setMainImageFile(null)
+                        if (imageInputRef.current) imageInputRef.current.value = ''
+                      }}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+                <p className="text-sm text-gray-500">
+                  {mainImagePreview ? 'صورة جديدة' : t.productManagement.image}
+                </p>
               </div>
             )}
 
@@ -528,7 +566,20 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{t.productManagement.image}</label>
-              <input type="file" name="image" accept="image/jpeg,image/png,image/webp" className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+              <input
+                ref={imageInputRef}
+                type="file"
+                name="image"
+                accept="image/jpeg,image/png,image/webp"
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) {
+                    setMainImageFile(file)
+                    setMainImagePreview(URL.createObjectURL(file))
+                  }
+                }}
+              />
             </div>
           </CardContent>
         </Card>

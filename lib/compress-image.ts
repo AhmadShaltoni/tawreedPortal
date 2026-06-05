@@ -12,6 +12,11 @@ export async function compressImage(file: File): Promise<File> {
   if (file.size <= 200 * 1024) return file
 
   const compressed = await imageCompression(file, defaultOptions)
+  // Ensure the result is a proper File with correct type and name
+  if (compressed.type !== 'image/webp' || !compressed.name.endsWith('.webp')) {
+    const name = file.name.replace(/\.[^.]+$/, '.webp')
+    return new File([compressed], name, { type: 'image/webp' })
+  }
   return compressed
 }
 
