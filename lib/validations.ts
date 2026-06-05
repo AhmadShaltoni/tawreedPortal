@@ -130,7 +130,7 @@ export const createCategorySchema = z.object({
   slug: z.string()
     .min(2, 'Slug is required')
     .regex(/^[a-z0-9-]+$/, 'Slug must contain only lowercase letters, numbers, and hyphens'),
-  parentId: z.string().optional(),
+  parentId: z.string().nullable().optional(),
   sortOrder: z.coerce.number().int().optional(),
   isActive: z.coerce.boolean().optional(),
 })
