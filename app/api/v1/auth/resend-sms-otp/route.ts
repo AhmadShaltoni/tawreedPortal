@@ -1,8 +1,9 @@
 // POST /api/v1/auth/resend-sms-otp
-// Resend OTP via SMS (manual fallback after 3 minutes)
+// Resend OTP via WhatsApp (kept at old path for backward compatibility)
+// New clients should use /api/v1/auth/resend-otp
 
 import { NextRequest, NextResponse } from 'next/server'
-import { resendViaSms } from '@/lib/otp'
+import { resendOtp } from '@/lib/otp'
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const result = await resendViaSms(phone)
+    const result = await resendOtp(phone)
 
     if (!result.success) {
       return NextResponse.json(
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result.data, { status: 200 })
   } catch (error) {
-    console.error('[API] resend-sms-otp error:', error)
+    console.error('[API] resend-otp error:', error)
     return NextResponse.json(
       { success: false, error: 'حدث خطأ في الخادم' },
       { status: 500 }

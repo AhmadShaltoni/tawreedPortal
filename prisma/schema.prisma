@@ -1146,3 +1146,30 @@ model LoyaltyAuditLog {
   @@index([targetUserId])
   @@index([action])
 }
+
+// OTP verification sessions (WhatsApp)
+model OtpSession {
+  id              String    @id @default(cuid())
+  phone           String    // E.164 format (+962XXXXXXXXX)
+  code            String    // 6-digit OTP code (hashed)
+  status          String    @default("pending") // pending, verified, expired, max_attempts
+  attempts        Int       @default(0)
+  messageId       String?   // WhatsApp message ID
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  verifiedAt      DateTime?
+
+  @@index([phone, status])
+  @@index([expiresAt])
+}
+
+// OTP rate limiting (persisted)
+model OtpRateLimit {
+  id              String    @id @default(cuid())
+  phone           String    @unique // E.164 format
+  attempts        Int       @default(1)
+  windowStart     DateTime  @default(now())
+  lastRequest     DateTime  @default(now())
+
+  @@index([phone])
+}

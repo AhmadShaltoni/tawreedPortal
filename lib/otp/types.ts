@@ -1,7 +1,5 @@
 // OTP Authentication System - Type Definitions
 
-export type OtpChannel = 'whatsapp' | 'sms'
-
 export type OtpSessionStatus =
   | 'pending'       // OTP sent, waiting for verification
   | 'verified'      // Successfully verified
@@ -18,29 +16,26 @@ export interface VerifyOtpRequest {
   code: string
 }
 
-export interface ResendSmsRequest {
+export interface ResendOtpRequest {
   phone: string
 }
 
 export interface OtpStatusResponse {
   phone: string
   status: OtpSessionStatus
-  channel: OtpChannel
   sentAt: string
   expiresAt: string
   remainingSeconds: number
-  smsFallbackAllowed: boolean
-  smsFallbackAllowedAt: string | null
+  resendAllowed: boolean
   attempts: number
   maxAttempts: number
 }
 
 export interface SendOtpResponse {
   success: boolean
-  channel: OtpChannel
   message: string
   expiresAt: string
-  smsFallbackAllowedAt: string
+  resendAllowedAt: string
 }
 
 export interface VerifyOtpResponse {
@@ -57,19 +52,8 @@ export interface VerifyOtpResponse {
   }
 }
 
-export interface OtpProviderResult {
+export interface WhatsAppSendResult {
   success: boolean
-  sid?: string
+  messageId?: string
   error?: string
-  channel: OtpChannel
-}
-
-export interface OtpVerifyResult {
-  success: boolean
-  error?: string
-}
-
-export interface OtpProviderInterface {
-  sendOtp(phone: string, channel: OtpChannel): Promise<OtpProviderResult>
-  verifyOtp(phone: string, code: string): Promise<OtpVerifyResult>
 }

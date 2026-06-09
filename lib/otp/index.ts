@@ -1,6 +1,6 @@
 // OTP Module - Public API
-export { sendOtp, verifyOtp, resendViaSms, getOtpStatus } from './service'
+export { sendOtp, verifyOtp, resendOtp, getOtpStatus, cleanupExpiredSessions } from './service'
 export { validatePhone, normalizeJordanPhone } from './validators'
+export { sendWhatsAppOtp } from './provider'
 export { OTP_CONFIG } from './config'
-export { getOtpProvider } from './provider'
 export type * from './types'

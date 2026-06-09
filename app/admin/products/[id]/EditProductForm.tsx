@@ -104,6 +104,12 @@ interface SupplierOption {
   isDefault: boolean
 }
 
+interface BrandOption {
+  id: string
+  name: string
+  nameEn: string | null
+}
+
 interface Props {
   product: {
     id: string
@@ -114,11 +120,13 @@ interface Props {
     image: string | null
     categoryId: string
     supplierId: string | null
+    brandId?: string | null
     isActive: boolean
     variants?: ProductVariantData[]
   }
   categoryTree: CategoryNode[]
   suppliers: SupplierOption[]
+  brands: BrandOption[]
 }
 
 const UNIT_OPTIONS = [
@@ -194,7 +202,7 @@ function buildInitialVariants(product: Props['product']): VariantEntry[] {
   return [createDefaultVariant(true)]
 }
 
-export function EditProductForm({ product, categoryTree, suppliers }: Props) {
+export function EditProductForm({ product, categoryTree, suppliers, brands }: Props) {
   const { t, dir, lang } = useLanguage()
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
@@ -202,6 +210,7 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>(product.supplierId || '')
+  const [selectedBrandId, setSelectedBrandId] = useState<string>(product.brandId || '')
   const [mainImagePreview, setMainImagePreview] = useState<string | null>(null)
   const [mainImageFile, setMainImageFile] = useState<File | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -359,6 +368,7 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
     const formData = new FormData(e.currentTarget)
     formData.set('isActive', String(product.isActive))
     formData.set('supplierId', selectedSupplierId)
+    formData.set('brandId', selectedBrandId)
 
     const variantsPayload = variants.map((v, vi) => ({
       size: v.size,
@@ -544,6 +554,23 @@ export function EditProductForm({ product, categoryTree, suppliers }: Props) {
               </div>
               <input type="hidden" name="categoryId" value={finalCategoryId} />
               {fieldErrors.categoryId && <p className="text-sm text-red-600 mt-1">{fieldErrors.categoryId[0]}</p>}
+            </div>
+
+            {/* Brand */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">الماركة (اختياري)</label>
+              <select
+                value={selectedBrandId}
+                onChange={(e) => setSelectedBrandId(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">— اختر ماركة —</option>
+                {brands.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {lang === 'ar' ? b.name : (b.nameEn || b.name)}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Supplier */}

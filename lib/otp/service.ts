@@ -1,51 +1,97 @@
-// OTP Service - Core Business Logic
+// OTP Service - Database-backed, WhatsApp-only
 
+import { randomInt, createHash } from 'crypto'
 import { OTP_CONFIG } from './config'
-import { getOtpProvider } from './provider'
-import { checkRateLimit, resetRateLimit } from './rate-limiter'
+import { sendWhatsAppOtp } from './provider'
 import { validatePhone, normalizeJordanPhone } from './validators'
+import { db } from '@/lib/db'
 import type {
-  OtpChannel,
   OtpSessionStatus,
   SendOtpResponse,
   VerifyOtpResponse,
   OtpStatusResponse,
 } from './types'
 
-// In-memory OTP session store
-// For production with multiple server instances, use Redis or database
-interface OtpSession {
-  phone: string
-  channel: OtpChannel
-  status: OtpSessionStatus
-  sentAt: number
-  expiresAt: number
-  smsFallbackAllowedAt: number
-  attempts: number
-  twilioSid?: string
+/**
+ * Generate a cryptographically random 6-digit OTP code
+ */
+function generateOtpCode(): string {
+  return randomInt(100000, 999999).toString()
 }
 
-const otpSessions = new Map<string, OtpSession>()
-
-// Cleanup expired sessions every minute
-setInterval(() => {
-  const now = Date.now()
-  for (const [key, session] of otpSessions.entries()) {
-    if (now > session.expiresAt) {
-      otpSessions.delete(key)
-    }
-  }
-}, 60 * 1000)
+/**
+ * Hash OTP code for storage (SHA-256)
+ */
+function hashCode(code: string): string {
+  return createHash('sha256').update(code).digest('hex')
+}
 
 /**
- * Send OTP - Primary flow
- * 1. Validates phone number
- * 2. Checks rate limit
- * 3. Attempts WhatsApp first
- * 4. Falls back to SMS if WhatsApp fails immediately
+ * Check rate limit from database
+ */
+async function checkRateLimit(phone: string): Promise<{ allowed: boolean; error?: string }> {
+  const now = new Date()
+  const windowMs = OTP_CONFIG.RATE_LIMIT_WINDOW_SECONDS * 1000
+  const cooldownMs = OTP_CONFIG.RESEND_COOLDOWN_SECONDS * 1000
+
+  const entry = await db.otpRateLimit.findUnique({ where: { phone } })
+
+  if (!entry) {
+    await db.otpRateLimit.create({
+      data: { phone, attempts: 1, windowStart: now, lastRequest: now },
+    })
+    return { allowed: true }
+  }
+
+  // Check if window expired - reset
+  if (now.getTime() - entry.windowStart.getTime() > windowMs) {
+    await db.otpRateLimit.update({
+      where: { phone },
+      data: { attempts: 1, windowStart: now, lastRequest: now },
+    })
+    return { allowed: true }
+  }
+
+  // Check cooldown
+  const timeSinceLast = now.getTime() - entry.lastRequest.getTime()
+  if (timeSinceLast < cooldownMs) {
+    const retryAfter = Math.ceil((cooldownMs - timeSinceLast) / 1000)
+    return { allowed: false, error: `يرجى الانتظار ${retryAfter} ثانية قبل إعادة المحاولة` }
+  }
+
+  // Check max attempts in window
+  if (entry.attempts >= OTP_CONFIG.RATE_LIMIT_MAX_REQUESTS) {
+    const windowRemaining = Math.ceil(
+      (windowMs - (now.getTime() - entry.windowStart.getTime())) / 1000
+    )
+    return {
+      allowed: false,
+      error: `تم تجاوز الحد الأقصى للمحاولات. يرجى الانتظار ${Math.ceil(windowRemaining / 60)} دقيقة`,
+    }
+  }
+
+  // Allow and increment
+  await db.otpRateLimit.update({
+    where: { phone },
+    data: { attempts: entry.attempts + 1, lastRequest: now },
+  })
+  return { allowed: true }
+}
+
+/**
+ * Invalidate any existing pending sessions for this phone
+ */
+async function invalidateExistingSessions(phone: string): Promise<void> {
+  await db.otpSession.updateMany({
+    where: { phone, status: 'pending' },
+    data: { status: 'expired' },
+  })
+}
+
+/**
+ * Send OTP via WhatsApp
  */
 export async function sendOtp(phone: string): Promise<{ success: boolean; data?: SendOtpResponse; error?: string; statusCode?: number }> {
-  // Validate phone
   const validation = validatePhone(phone)
   if (!validation.valid || !validation.normalized) {
     return { success: false, error: validation.error, statusCode: 400 }
@@ -54,76 +100,62 @@ export async function sendOtp(phone: string): Promise<{ success: boolean; data?:
   const normalizedPhone = validation.normalized
 
   // Check rate limit
-  const rateLimit = checkRateLimit(normalizedPhone)
+  const rateLimit = await checkRateLimit(normalizedPhone)
   if (!rateLimit.allowed) {
     return { success: false, error: rateLimit.error, statusCode: 429 }
   }
 
-  const provider = getOtpProvider()
-  const now = Date.now()
-  const expiresAt = now + OTP_CONFIG.EXPIRATION_SECONDS * 1000
-  const smsFallbackAllowedAt = now + OTP_CONFIG.SMS_FALLBACK_DELAY_SECONDS * 1000
+  // Generate OTP
+  const code = OTP_CONFIG.DEV_MODE ? OTP_CONFIG.DEV_OTP_CODE : generateOtpCode()
+  const hashedCode = hashCode(code)
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + OTP_CONFIG.EXPIRATION_SECONDS * 1000)
+  const resendAllowedAt = new Date(now.getTime() + OTP_CONFIG.RESEND_COOLDOWN_SECONDS * 1000)
 
-  // Try WhatsApp first
-  console.log(`[OTP] Attempting WhatsApp delivery to ${normalizedPhone.slice(0, 7)}***`)
-  const whatsappResult = await provider.sendOtp(normalizedPhone, 'whatsapp')
+  // Send via WhatsApp
+  const result = await sendWhatsAppOtp(normalizedPhone, code)
 
-  let finalChannel: OtpChannel = 'whatsapp'
-  let finalSid = whatsappResult.sid
-
-  if (!whatsappResult.success) {
-    // WhatsApp failed immediately - fallback to SMS
-    console.log(`[OTP] WhatsApp failed, falling back to SMS for ${normalizedPhone.slice(0, 7)}***`)
-    const smsResult = await provider.sendOtp(normalizedPhone, 'sms')
-
-    if (!smsResult.success) {
-      console.error(`[OTP] Both channels failed for ${normalizedPhone.slice(0, 7)}***`)
-      return {
-        success: false,
-        error: 'فشل في إرسال رمز التحقق. يرجى المحاولة لاحقاً',
-        statusCode: 503,
-      }
+  if (!result.success) {
+    console.error(`[OTP] WhatsApp delivery failed for ${normalizedPhone.slice(0, 7)}***`)
+    return {
+      success: false,
+      error: 'فشل في إرسال رمز التحقق عبر واتساب. يرجى المحاولة لاحقاً',
+      statusCode: 503,
     }
-
-    finalChannel = 'sms'
-    finalSid = smsResult.sid
   }
 
-  // Store OTP session
-  const session: OtpSession = {
-    phone: normalizedPhone,
-    channel: finalChannel,
-    status: 'pending',
-    sentAt: now,
-    expiresAt,
-    smsFallbackAllowedAt,
-    attempts: 0,
-    twilioSid: finalSid,
-  }
-  otpSessions.set(normalizedPhone, session)
+  // Invalidate old sessions and create new one in DB
+  await invalidateExistingSessions(normalizedPhone)
+
+  await db.otpSession.create({
+    data: {
+      phone: normalizedPhone,
+      code: hashedCode,
+      status: 'pending',
+      attempts: 0,
+      messageId: result.messageId,
+      expiresAt,
+    },
+  })
 
   return {
     success: true,
     data: {
       success: true,
-      channel: finalChannel,
-      message: finalChannel === 'whatsapp'
-        ? 'تم إرسال رمز التحقق عبر واتساب'
-        : 'تم إرسال رمز التحقق عبر رسالة نصية',
-      expiresAt: new Date(expiresAt).toISOString(),
-      smsFallbackAllowedAt: new Date(smsFallbackAllowedAt).toISOString(),
+      message: 'تم إرسال رمز التحقق عبر واتساب',
+      expiresAt: expiresAt.toISOString(),
+      resendAllowedAt: resendAllowedAt.toISOString(),
     },
   }
 }
 
 /**
- * Verify OTP code
+ * Verify OTP code against database session
  */
 export async function verifyOtp(
   phone: string,
   code: string
 ): Promise<{ success: boolean; data?: VerifyOtpResponse; error?: string; statusCode?: number }> {
-  // Validate phone
   const validation = validatePhone(phone)
   if (!validation.valid || !validation.normalized) {
     return { success: false, error: validation.error, statusCode: 400 }
@@ -131,28 +163,36 @@ export async function verifyOtp(
 
   const normalizedPhone = validation.normalized
 
-  // Validate code format (6 digits)
+  // Validate code format
   if (!code || !/^\d{6}$/.test(code)) {
     return { success: false, error: 'رمز التحقق يجب أن يكون 6 أرقام', statusCode: 400 }
   }
 
-  // Check session exists
-  const session = otpSessions.get(normalizedPhone)
+  // Find active session
+  const session = await db.otpSession.findFirst({
+    where: { phone: normalizedPhone, status: 'pending' },
+    orderBy: { createdAt: 'desc' },
+  })
+
   if (!session) {
     return { success: false, error: 'لا يوجد رمز تحقق نشط لهذا الرقم. أعد إرسال الرمز', statusCode: 400 }
   }
 
   // Check expiration
-  if (Date.now() > session.expiresAt) {
-    session.status = 'expired'
-    otpSessions.delete(normalizedPhone)
+  if (new Date() > session.expiresAt) {
+    await db.otpSession.update({
+      where: { id: session.id },
+      data: { status: 'expired' },
+    })
     return { success: false, error: 'انتهت صلاحية رمز التحقق. أعد إرسال الرمز', statusCode: 400 }
   }
 
   // Check max attempts
   if (session.attempts >= OTP_CONFIG.MAX_VERIFY_ATTEMPTS) {
-    session.status = 'max_attempts'
-    otpSessions.delete(normalizedPhone)
+    await db.otpSession.update({
+      where: { id: session.id },
+      data: { status: 'max_attempts' },
+    })
     return {
       success: false,
       error: 'تم تجاوز الحد الأقصى لمحاولات التحقق. أعد إرسال الرمز',
@@ -161,14 +201,15 @@ export async function verifyOtp(
   }
 
   // Increment attempts
-  session.attempts += 1
+  await db.otpSession.update({
+    where: { id: session.id },
+    data: { attempts: session.attempts + 1 },
+  })
 
-  // Verify with provider
-  const provider = getOtpProvider()
-  const result = await provider.verifyOtp(normalizedPhone, code)
-
-  if (!result.success) {
-    const remaining = OTP_CONFIG.MAX_VERIFY_ATTEMPTS - session.attempts
+  // Verify code
+  const hashedInput = hashCode(code)
+  if (hashedInput !== session.code) {
+    const remaining = OTP_CONFIG.MAX_VERIFY_ATTEMPTS - (session.attempts + 1)
     return {
       success: false,
       error: `رمز التحقق غير صحيح. المحاولات المتبقية: ${remaining}`,
@@ -176,10 +217,14 @@ export async function verifyOtp(
     }
   }
 
-  // Success - mark verified and cleanup
-  session.status = 'verified'
-  otpSessions.delete(normalizedPhone)
-  resetRateLimit(normalizedPhone)
+  // Success - mark verified
+  await db.otpSession.update({
+    where: { id: session.id },
+    data: { status: 'verified', verifiedAt: new Date() },
+  })
+
+  // Reset rate limit on success
+  await db.otpRateLimit.deleteMany({ where: { phone: normalizedPhone } })
 
   return {
     success: true,
@@ -191,10 +236,9 @@ export async function verifyOtp(
 }
 
 /**
- * Resend OTP via SMS (manual fallback after 3 minutes)
+ * Resend OTP via WhatsApp (after cooldown)
  */
-export async function resendViaSms(phone: string): Promise<{ success: boolean; data?: SendOtpResponse; error?: string; statusCode?: number }> {
-  // Validate phone
+export async function resendOtp(phone: string): Promise<{ success: boolean; data?: SendOtpResponse; error?: string; statusCode?: number }> {
   const validation = validatePhone(phone)
   if (!validation.valid || !validation.normalized) {
     return { success: false, error: validation.error, statusCode: 400 }
@@ -203,70 +247,86 @@ export async function resendViaSms(phone: string): Promise<{ success: boolean; d
   const normalizedPhone = validation.normalized
 
   // Check rate limit
-  const rateLimit = checkRateLimit(normalizedPhone)
+  const rateLimit = await checkRateLimit(normalizedPhone)
   if (!rateLimit.allowed) {
     return { success: false, error: rateLimit.error, statusCode: 429 }
   }
 
-  // Check if there's an active session
-  const session = otpSessions.get(normalizedPhone)
-  if (!session) {
-    return { success: false, error: 'لا يوجد رمز تحقق نشط. أعد إرسال الرمز من البداية', statusCode: 400 }
-  }
+  // Check if there's an active session and cooldown
+  const existingSession = await db.otpSession.findFirst({
+    where: { phone: normalizedPhone, status: 'pending' },
+    orderBy: { createdAt: 'desc' },
+  })
 
-  // Check if SMS fallback is allowed (3 minute wait)
-  const now = Date.now()
-  if (now < session.smsFallbackAllowedAt) {
-    const remainingSeconds = Math.ceil((session.smsFallbackAllowedAt - now) / 1000)
-    return {
-      success: false,
-      error: `يرجى الانتظار ${remainingSeconds} ثانية قبل طلب رسالة نصية`,
-      statusCode: 400,
+  if (existingSession) {
+    const cooldownMs = OTP_CONFIG.RESEND_COOLDOWN_SECONDS * 1000
+    const timeSinceSent = Date.now() - existingSession.createdAt.getTime()
+    if (timeSinceSent < cooldownMs) {
+      const remainingSeconds = Math.ceil((cooldownMs - timeSinceSent) / 1000)
+      return {
+        success: false,
+        error: `يرجى الانتظار ${remainingSeconds} ثانية قبل إعادة الإرسال`,
+        statusCode: 400,
+      }
     }
   }
 
-  // Send via SMS
-  const provider = getOtpProvider()
-  const smsResult = await provider.sendOtp(normalizedPhone, 'sms')
+  // Generate new OTP and send
+  const code = OTP_CONFIG.DEV_MODE ? OTP_CONFIG.DEV_OTP_CODE : generateOtpCode()
+  const hashedCode = hashCode(code)
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + OTP_CONFIG.EXPIRATION_SECONDS * 1000)
+  const resendAllowedAt = new Date(now.getTime() + OTP_CONFIG.RESEND_COOLDOWN_SECONDS * 1000)
 
-  if (!smsResult.success) {
+  const result = await sendWhatsAppOtp(normalizedPhone, code)
+
+  if (!result.success) {
     return {
       success: false,
-      error: 'فشل في إرسال الرسالة النصية. يرجى المحاولة لاحقاً',
+      error: 'فشل في إعادة إرسال رمز التحقق. يرجى المحاولة لاحقاً',
       statusCode: 503,
     }
   }
 
-  // Update session
-  const newExpiresAt = now + OTP_CONFIG.EXPIRATION_SECONDS * 1000
-  session.channel = 'sms'
-  session.sentAt = now
-  session.expiresAt = newExpiresAt
-  session.attempts = 0
-  session.twilioSid = smsResult.sid
+  // Invalidate old sessions and create new one
+  await invalidateExistingSessions(normalizedPhone)
+
+  await db.otpSession.create({
+    data: {
+      phone: normalizedPhone,
+      code: hashedCode,
+      status: 'pending',
+      attempts: 0,
+      messageId: result.messageId,
+      expiresAt,
+    },
+  })
 
   return {
     success: true,
     data: {
       success: true,
-      channel: 'sms',
-      message: 'تم إرسال رمز التحقق عبر رسالة نصية',
-      expiresAt: new Date(newExpiresAt).toISOString(),
-      smsFallbackAllowedAt: new Date(now).toISOString(), // Already allowed
+      message: 'تم إعادة إرسال رمز التحقق عبر واتساب',
+      expiresAt: expiresAt.toISOString(),
+      resendAllowedAt: resendAllowedAt.toISOString(),
     },
   }
 }
 
 /**
- * Get OTP session status
+ * Get OTP session status from database
  */
-export function getOtpStatus(phone: string): { success: boolean; data?: OtpStatusResponse; error?: string; statusCode?: number } {
+export async function getOtpStatus(phone: string): Promise<{ success: boolean; data?: OtpStatusResponse; error?: string; statusCode?: number }> {
   const normalized = normalizeJordanPhone(phone)
   if (!normalized) {
     return { success: false, error: 'رقم الهاتف غير صالح', statusCode: 400 }
   }
 
-  const session = otpSessions.get(normalized)
+  const session = await db.otpSession.findFirst({
+    where: { phone: normalized, status: 'pending' },
+    orderBy: { createdAt: 'desc' },
+  })
+
   if (!session) {
     return { success: false, error: 'لا يوجد رمز تحقق نشط لهذا الرقم', statusCode: 404 }
   }
@@ -274,27 +334,43 @@ export function getOtpStatus(phone: string): { success: boolean; data?: OtpStatu
   const now = Date.now()
 
   // Check if expired
-  if (now > session.expiresAt) {
-    otpSessions.delete(normalized)
+  if (now > session.expiresAt.getTime()) {
+    await db.otpSession.update({
+      where: { id: session.id },
+      data: { status: 'expired' },
+    })
     return { success: false, error: 'انتهت صلاحية رمز التحقق', statusCode: 400 }
   }
 
-  const remainingSeconds = Math.ceil((session.expiresAt - now) / 1000)
-  const smsFallbackAllowed = now >= session.smsFallbackAllowedAt
+  const remainingSeconds = Math.ceil((session.expiresAt.getTime() - now) / 1000)
+  const cooldownMs = OTP_CONFIG.RESEND_COOLDOWN_SECONDS * 1000
+  const resendAllowed = (now - session.createdAt.getTime()) >= cooldownMs
 
   return {
     success: true,
     data: {
       phone: normalized,
-      status: session.status,
-      channel: session.channel,
-      sentAt: new Date(session.sentAt).toISOString(),
-      expiresAt: new Date(session.expiresAt).toISOString(),
+      status: session.status as OtpSessionStatus,
+      sentAt: session.createdAt.toISOString(),
+      expiresAt: session.expiresAt.toISOString(),
       remainingSeconds,
-      smsFallbackAllowed,
-      smsFallbackAllowedAt: new Date(session.smsFallbackAllowedAt).toISOString(),
+      resendAllowed,
       attempts: session.attempts,
       maxAttempts: OTP_CONFIG.MAX_VERIFY_ATTEMPTS,
     },
   }
+}
+
+/**
+ * Cleanup expired OTP sessions (run periodically via cron or API)
+ */
+export async function cleanupExpiredSessions(): Promise<number> {
+  const result = await db.otpSession.updateMany({
+    where: {
+      status: 'pending',
+      expiresAt: { lt: new Date() },
+    },
+    data: { status: 'expired' },
+  })
+  return result.count
 }
