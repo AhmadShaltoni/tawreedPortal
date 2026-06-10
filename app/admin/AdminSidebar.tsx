@@ -32,6 +32,7 @@ export function AdminSidebar() {
     { href: '/admin/suppliers', label: t.admin.suppliers || 'الموردين', icon: Truck },
     { href: '/admin/categories', label: t.admin.categories, icon: FolderTree },
     { href: '/admin/orders', label: t.admin.orders, icon: ShoppingCart },
+    { href: '/admin/delivery', label: 'التوصيل', icon: Package2 },
     { href: '/admin/users', label: t.admin.users, icon: Users },
     { href: '/admin/notifications', label: t.admin.notifications, icon: Bell },
     { href: '/admin/notices', label: t.admin.notices, icon: StickyNote },

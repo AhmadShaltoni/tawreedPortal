@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
 import { createOrderFromCartSchema } from '@/lib/validations'
 import { sendPushToRole } from '@/lib/push-notifications'
+import { calculateDeliveryFee } from '@/actions/delivery'
 import type { DiscountCode } from '@prisma/client'
 
 class OrderValidationError extends Error {
@@ -203,6 +204,28 @@ export async function POST(request: NextRequest) {
     finalPrice = Math.round((totalPrice - discountAmount) * 100) / 100
   }
 
+  // Calculate delivery fee if cityId provided
+  let deliveryFee = 0
+  let deliveryPromotionId: string | null = null
+  const deliveryCityId = validated.data.deliveryCityId || null
+
+  if (deliveryCityId) {
+    const deliveryResult = await calculateDeliveryFee(deliveryCityId, finalPrice)
+    if (deliveryResult.error) {
+      return apiError(deliveryResult.error, 400)
+    }
+    deliveryFee = deliveryResult.fee
+    deliveryPromotionId = deliveryResult.promotionId
+
+    // Increment promotion usage if applicable
+    if (deliveryPromotionId) {
+      await db.deliveryPromotion.update({
+        where: { id: deliveryPromotionId },
+        data: { usageCount: { increment: 1 } },
+      })
+    }
+  }
+
   // Create order in transaction
   let order
   try {
@@ -253,8 +276,12 @@ export async function POST(request: NextRequest) {
       const newOrder = await tx.order.create({
         data: {
           totalPrice: finalPrice,
+          deliveryFee,
           deliveryAddress: validated.data.deliveryAddress,
           deliveryCity: validated.data.deliveryCity,
+          deliveryCityId: deliveryCityId,
+          deliveryAreaId: validated.data.deliveryAreaId || null,
+          deliveryPromotionId,
           buyerNotes: validated.data.buyerNotes,
           buyerId: user.id,
           status: 'PENDING',
@@ -344,6 +371,7 @@ export async function POST(request: NextRequest) {
 
   return apiResponse({
     order,
+    deliveryFee,
     ...(discountCode ? {
       coupon: {
         code: discountCode.code,

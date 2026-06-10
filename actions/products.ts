@@ -130,6 +130,10 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
 
   // Create product, variants, and units in a transaction
   const product = await db.$transaction(async (tx) => {
+    // Get max sortOrder to place new product at the end
+    const maxSort = await tx.product.aggregate({ _max: { sortOrder: true } })
+    const nextSortOrder = (maxSort._max.sortOrder ?? -1) + 1
+
     const p = await tx.product.create({
       data: {
         ...validated.data,
@@ -137,6 +141,7 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
         supplierId: rawData.supplierId as string | undefined || null,
         image: imagePath,
         isActive: validated.data.isActive ?? true,
+        sortOrder: nextSortOrder,
       },
     })
 
@@ -483,18 +488,84 @@ export async function toggleProductActive(id: string): Promise<ActionResponse> {
   return { success: true }
 }
 
-export async function reorderProducts(orderedIds: string[]): Promise<ActionResponse> {
+export async function reorderProducts(movedId: string, targetSortOrder: number, direction: 'up' | 'down'): Promise<ActionResponse> {
   const { authorized, error } = await requireRole(['ADMIN'])
   if (!authorized) return { success: false, error: error ?? 'Not authorized' }
 
-  if (!orderedIds.length) return { success: false, error: 'No products to reorder' }
+  if (!movedId) return { success: false, error: 'No product to reorder' }
 
+  const movedProduct = await db.product.findUnique({ where: { id: movedId }, select: { sortOrder: true } })
+  if (!movedProduct) return { success: false, error: 'Product not found' }
+
+  const currentSortOrder = movedProduct.sortOrder
+
+  if (currentSortOrder === targetSortOrder) return { success: true }
+
+  if (direction === 'up') {
+    // Moving up: shift products in the range [targetSortOrder, currentSortOrder) down by +1
+    await db.product.updateMany({
+      where: {
+        sortOrder: { gte: targetSortOrder, lt: currentSortOrder },
+        id: { not: movedId },
+      },
+      data: { sortOrder: { increment: 1 } },
+    })
+  } else {
+    // Moving down: shift products in the range (currentSortOrder, targetSortOrder] up by -1
+    await db.product.updateMany({
+      where: {
+        sortOrder: { gt: currentSortOrder, lte: targetSortOrder },
+        id: { not: movedId },
+      },
+      data: { sortOrder: { decrement: 1 } },
+    })
+  }
+
+  // Set moved product to target position
+  await db.product.update({
+    where: { id: movedId },
+    data: { sortOrder: targetSortOrder },
+  })
+
+  revalidatePath('/admin/products')
+  return { success: true }
+}
+
+export async function moveProductsToTop(productIds: string[]): Promise<ActionResponse> {
+  return moveProductsToPosition(productIds, 1)
+}
+
+export async function moveProductsToPosition(productIds: string[], position: number): Promise<ActionResponse> {
+  const { authorized, error } = await requireRole(['ADMIN'])
+  if (!authorized) return { success: false, error: error ?? 'Not authorized' }
+
+  if (!productIds.length) return { success: false, error: 'No products selected' }
+  if (position < 1) return { success: false, error: 'Position must be >= 1' }
+
+  const targetIndex = position - 1 // Convert 1-based position to 0-based index
+  const count = productIds.length
+
+  // Get all products sorted by current order, excluding selected ones
+  const allOthers = await db.product.findMany({
+    where: { id: { notIn: productIds } },
+    orderBy: { sortOrder: 'asc' },
+    select: { id: true },
+  })
+
+  // Build new order: insert selected products at targetIndex position
+  const before = allOthers.slice(0, targetIndex)
+  const after = allOthers.slice(targetIndex)
+
+  // Assign sortOrder to: before + selected + after
+  const updates: Array<{ id: string; sortOrder: number }> = []
+  before.forEach((p, i) => updates.push({ id: p.id, sortOrder: i }))
+  productIds.forEach((id, i) => updates.push({ id, sortOrder: targetIndex + i }))
+  after.forEach((p, i) => updates.push({ id: p.id, sortOrder: targetIndex + count + i }))
+
+  // Batch update in transaction
   await db.$transaction(
-    orderedIds.map((id, index) =>
-      db.product.update({
-        where: { id },
-        data: { sortOrder: index },
-      })
+    updates.map(({ id, sortOrder }) =>
+      db.product.update({ where: { id }, data: { sortOrder } })
     )
   )
 

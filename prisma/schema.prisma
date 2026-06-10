@@ -299,8 +299,14 @@ model Order {
   // Delivery
   deliveryAddress String
   deliveryCity    String
+  deliveryCityId  String?
+  deliveryAreaId  String?
   expectedDelivery DateTime?
   actualDelivery   DateTime?
+  
+  // Delivery promotion used
+  deliveryPromotionId String?
+  deliveryPromotion   DeliveryPromotion? @relation(fields: [deliveryPromotionId], references: [id])
   
   // Status
   status        OrderStatus @default(PENDING)
@@ -802,8 +808,9 @@ model City {
   updatedAt DateTime @updatedAt
 
   // Relations
-  areas     Area[]
-  users     User[]
+  areas         Area[]
+  users         User[]
+  deliveryZone  DeliveryZone?
 
   @@index([sortOrder])
 }
@@ -1172,4 +1179,77 @@ model OtpRateLimit {
   lastRequest     DateTime  @default(now())
 
   @@index([phone])
+}
+
+// ============================================
+// DELIVERY MANAGEMENT SYSTEM
+// ============================================
+
+enum DeliveryPromotionType {
+  FREE_DELIVERY   // Remove delivery fee entirely
+  REDUCED_FEE     // Subtract a fixed amount from fee
+  FLAT_RATE       // Override fee with a flat rate
+}
+
+enum DeliveryScope {
+  ALL_CITIES       // Applies to all cities
+  SPECIFIC_CITIES  // Applies to selected cities only
+}
+
+// Global delivery configuration (singleton)
+model DeliveryConfig {
+  id                     String        @id @default(cuid())
+  isEnabled              Boolean       @default(true)       // Global kill switch
+  defaultFee             Float         @default(3.0)        // Fallback fee (JOD)
+  freeDeliveryEnabled    Boolean       @default(false)      // Is free delivery threshold active?
+  freeDeliveryThreshold  Float?                             // Orders above this = free delivery
+  freeDeliveryScope      DeliveryScope @default(ALL_CITIES) // Where free delivery applies
+  minOrderAmount         Float?                             // Min order to allow checkout (null = no min)
+  estimatedDeliveryDays  Int           @default(2)          // Default estimated days
+  updatedAt              DateTime      @updatedAt
+  createdAt              DateTime      @default(now())
+}
+
+// Per-city delivery zone pricing
+model DeliveryZone {
+  id                    String    @id @default(cuid())
+  cityId                String    @unique
+  city                  City      @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  isActive              Boolean   @default(true)  // Can disable delivery to this city
+  isVisible             Boolean   @default(true)  // Hide from mobile UI temporarily
+  fee                   Float     @default(3.0)   // Delivery fee for this city (JOD)
+  freeDeliveryThreshold Float?                    // Override global threshold for this city
+  freeDeliveryEnabled   Boolean?                  // Override global free delivery flag (null = use global)
+  estimatedDays         Int?                      // Override global estimated days
+  sortOrder             Int       @default(0)
+  notes                 String?                   // Admin-only notes
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([isActive, isVisible])
+  @@index([sortOrder])
+}
+
+// Time-limited delivery promotions (campaigns)
+model DeliveryPromotion {
+  id              String                @id @default(cuid())
+  name            String                // Arabic name
+  nameEn          String?               // English name
+  type            DeliveryPromotionType // FREE_DELIVERY | REDUCED_FEE | FLAT_RATE
+  value           Float         @default(0) // Discount amount or flat rate value
+  scope           DeliveryScope @default(ALL_CITIES)
+  cityIds         String[]      @default([]) // Applicable city IDs when scope = SPECIFIC_CITIES
+  minOrderAmount  Float?                // Min order total for promotion to apply
+  startDate       DateTime
+  endDate         DateTime
+  isActive        Boolean       @default(true)
+  usageLimit      Int?                  // Max total uses (null = unlimited)
+  usageCount      Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Orders that used this promotion
+  orders          Order[]
+
+  @@index([isActive, startDate, endDate])
 }

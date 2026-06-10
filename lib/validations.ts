@@ -171,6 +171,8 @@ export const updateCartItemSchema = z.object({
 export const createOrderFromCartSchema = z.object({
   deliveryAddress: z.string().min(5, 'Delivery address is required'),
   deliveryCity: z.string().min(2, 'City is required'),
+  deliveryCityId: z.string().optional(),
+  deliveryAreaId: z.string().optional(),
   buyerNotes: z.string().optional(),
   couponCode: z.string().optional(),
 })

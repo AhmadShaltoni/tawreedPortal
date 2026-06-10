@@ -3,14 +3,14 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { Plus, Search, GripVertical, Trash2, X, FileDown } from 'lucide-react'
+import { Plus, Search, GripVertical, Trash2, X, FileDown, ArrowUpToLine, RotateCcw } from 'lucide-react'
 import { useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { useLanguage } from '@/lib/LanguageContext'
 import { formatCurrency } from '@/lib/utils'
-import { toggleProductActive, deleteProduct, reorderProducts } from '@/actions/products'
+import { toggleProductActive, deleteProduct, reorderProducts, moveProductsToTop, moveProductsToPosition } from '@/actions/products'
 import { getAllProductsForExport } from '@/actions/export-products'
 import { generateProductsPDF, type ProductExportRow } from '@/lib/pdf-products'
 
@@ -90,6 +90,10 @@ export function ProductListClient({
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [movingToTop, setMovingToTop] = useState(false)
+  const [targetPosition, setTargetPosition] = useState('')
+  const [movingToPosition, setMovingToPosition] = useState(false)
   const dragCounter = useRef<Record<string, number>>({})
 
   // Sync when products prop changes (e.g. after server refresh)
@@ -99,6 +103,38 @@ export function ProductListClient({
     if (productIds !== orderedIds || products.length !== orderedProducts.length) {
       setOrderedProducts(products)
     }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((x) => x !== id)
+      }
+      return [...prev, id]
+    })
+  }
+
+  async function handleMoveToTop() {
+    if (selectedIds.length === 0) return
+    setMovingToTop(true)
+    await moveProductsToTop(selectedIds)
+    setSelectedIds([])
+    setMovingToTop(false)
+    setTargetPosition('')
+    router.push('/admin/products')
+    router.refresh()
+  }
+
+  async function handleMoveToPosition() {
+    const pos = parseInt(targetPosition)
+    if (!pos || pos < 1 || selectedIds.length === 0) return
+    setMovingToPosition(true)
+    await moveProductsToPosition(selectedIds, pos)
+    setSelectedIds([])
+    setTargetPosition('')
+    setMovingToPosition(false)
+    router.push('/admin/products')
+    router.refresh()
   }
 
   function handleSearch(e: React.FormEvent) {
@@ -250,6 +286,10 @@ export function ProductListClient({
     const targetIndex = newOrder.findIndex(p => p.id === targetId)
     if (sourceIndex === -1 || targetIndex === -1) return
 
+    const movedProduct = newOrder[sourceIndex]
+    const targetProduct = newOrder[targetIndex]
+    const direction = sourceIndex > targetIndex ? 'up' : 'down'
+
     const [moved] = newOrder.splice(sourceIndex, 1)
     newOrder.splice(targetIndex, 0, moved)
     setOrderedProducts(newOrder)
@@ -257,9 +297,9 @@ export function ProductListClient({
     setDragOverId(null)
     dragCounter.current = {}
 
-    // Save to server
+    // Save to server - only move the dragged product to target's sortOrder
     setSaving(true)
-    await reorderProducts(newOrder.map(p => p.id))
+    await reorderProducts(movedProduct.id, targetProduct.sortOrder, direction)
     setSaving(false)
     router.refresh()
   }, [orderedProducts, router])
@@ -339,6 +379,71 @@ export function ProductListClient({
         </CardContent>
       </Card>
 
+      {/* Selection Toolbar */}
+      {selectedIds.length > 0 && (
+        <div className="sticky top-0 z-40 bg-blue-50 border border-blue-200 rounded-xl p-3 shadow-lg">
+          <div className={`flex items-center justify-between flex-wrap gap-3 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex items-center gap-3 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+              <span className="bg-blue-600 text-white text-sm font-bold rounded-full w-7 h-7 flex items-center justify-center">
+                {selectedIds.length}
+              </span>
+              <span className="text-sm font-medium text-blue-900">
+                {lang === 'ar' ? 'منتج محدد' : 'selected'}
+              </span>
+            </div>
+            <div className={`flex items-center gap-2 flex-wrap ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleMoveToTop}
+                disabled={movingToTop || movingToPosition}
+                className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}
+              >
+                <ArrowUpToLine className="w-4 h-4" />
+                {movingToTop
+                  ? (lang === 'ar' ? 'جاري النقل...' : 'Moving...')
+                  : (lang === 'ar' ? 'نقل للبداية' : 'Move to top')
+                }
+              </Button>
+              <div className={`flex items-center gap-1.5 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                <span className="text-sm text-blue-800 whitespace-nowrap">
+                  {selectedIds.length === 1
+                    ? (lang === 'ar' ? 'نقل ليصبح رقم' : 'Move to #')
+                    : (lang === 'ar' ? 'نقل ليبدأ من رقم' : 'Start from #')
+                  }
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  value={targetPosition}
+                  onChange={(e) => setTargetPosition(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleMoveToPosition() }}
+                  placeholder="#"
+                  className="w-16 border border-blue-300 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleMoveToPosition}
+                  disabled={movingToPosition || movingToTop || !targetPosition}
+                >
+                  {movingToPosition ? '...' : (lang === 'ar' ? 'نقل' : 'Go')}
+                </Button>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setSelectedIds([]); setTargetPosition('') }}
+                className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}
+              >
+                <RotateCcw className="w-4 h-4" />
+                {lang === 'ar' ? 'إلغاء' : 'Clear'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Products Table */}
       <Card>
         <CardContent>
@@ -355,6 +460,7 @@ export function ProductListClient({
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200">
+                      <th className={`pb-3 font-medium text-gray-500 w-8 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}></th>
                       <th className={`pb-3 font-medium text-gray-500 w-10 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}></th>
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.productManagement.image}</th>
                       <th className={`pb-3 font-medium text-gray-500 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>{t.productManagement.productName}</th>
@@ -368,7 +474,10 @@ export function ProductListClient({
                     </tr>
                   </thead>
                   <tbody>
-                    {orderedProducts.map((product) => (
+                    {orderedProducts.map((product) => {
+                      const selectionIndex = selectedIds.indexOf(product.id)
+                      const isSelected = selectionIndex !== -1
+                      return (
                       <tr
                         key={product.id}
                         draggable
@@ -383,11 +492,26 @@ export function ProductListClient({
                             ? 'opacity-50'
                             : dragOverId === product.id && draggedId
                               ? 'bg-blue-50 border-t-2 border-t-blue-400'
-                              : product.variants.reduce((s, v) => s + v.stock, 0) <= 0
-                                ? 'bg-red-50 hover:bg-red-100'
-                                : 'hover:bg-gray-50'
+                              : isSelected
+                                ? 'bg-blue-50/50'
+                                : product.variants.reduce((s, v) => s + v.stock, 0) <= 0
+                                  ? 'bg-red-50 hover:bg-red-100'
+                                  : 'hover:bg-gray-50'
                         }`}
                       >
+                        <td className="py-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleSelect(product.id)}
+                            className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
+                              isSelected
+                                ? 'bg-blue-600 border-blue-600 text-white'
+                                : 'border-gray-300 text-transparent hover:border-blue-400'
+                            }`}
+                          >
+                            {isSelected ? selectionIndex + 1 : ''}
+                          </button>
+                        </td>
                         <td className="py-3">
                           <div className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 flex justify-center">
                             <GripVertical className="w-5 h-5" />
@@ -469,7 +593,7 @@ export function ProductListClient({
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>
