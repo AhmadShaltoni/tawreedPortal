@@ -66,7 +66,9 @@ export async function GET(
     order: {
       ...order,
       items: formattedItems,
+      deliveryAddressDetails: order.deliveryAddressDetails,
       buyerNotes: order.buyerNotes,
+      notes: order.buyerNotes,
       statusHistory: order.statusHistory,
     }
   })
@@ -112,7 +114,13 @@ export async function PATCH(
   const updateData: any = {}
   if (validated.data.deliveryAddress) updateData.deliveryAddress = validated.data.deliveryAddress
   if (validated.data.deliveryCity) updateData.deliveryCity = validated.data.deliveryCity
-  if (validated.data.buyerNotes !== undefined) updateData.buyerNotes = validated.data.buyerNotes
+  if (validated.data.deliveryAddressDetails !== undefined) {
+    updateData.deliveryAddressDetails = validated.data.deliveryAddressDetails?.trim() || null
+  }
+  if (validated.data.buyerNotes !== undefined || validated.data.notes !== undefined) {
+    const resolvedNotes = validated.data.buyerNotes ?? validated.data.notes
+    updateData.buyerNotes = resolvedNotes?.trim() || null
+  }
 
   if (Object.keys(updateData).length === 0) {
     return apiResponse({ error: 'No fields to update' }, 400)

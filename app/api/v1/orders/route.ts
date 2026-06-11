@@ -82,7 +82,9 @@ export async function GET(request: NextRequest) {
       return {
         ...order,
         items: formattedItems,
+        deliveryAddressDetails: (order as { deliveryAddressDetails?: string | null }).deliveryAddressDetails ?? null,
         buyerNotes: order.buyerNotes,
+        notes: order.buyerNotes,
         statusHistory: order.statusHistory,
       }
     }),
@@ -229,6 +231,9 @@ export async function POST(request: NextRequest) {
   // Create order in transaction
   let order
   try {
+    const normalizedNotes = (validated.data.buyerNotes ?? validated.data.notes ?? '').trim() || null
+    const normalizedAddressDetails = (validated.data.deliveryAddressDetails ?? '').trim() || null
+
     order = await db.$transaction(async (tx) => {
       // Decrease stock atomically before creating the order. This prevents
       // another checkout from consuming the same stock between verification and save.
@@ -278,11 +283,12 @@ export async function POST(request: NextRequest) {
           totalPrice: finalPrice,
           deliveryFee,
           deliveryAddress: validated.data.deliveryAddress,
+          deliveryAddressDetails: normalizedAddressDetails,
           deliveryCity: validated.data.deliveryCity,
           deliveryCityId: deliveryCityId,
           deliveryAreaId: validated.data.deliveryAreaId || null,
           deliveryPromotionId,
-          buyerNotes: validated.data.buyerNotes,
+          buyerNotes: normalizedNotes,
           buyerId: user.id,
           status: 'PENDING',
           statusHistory: [

@@ -85,8 +85,10 @@ POST /api/v1/orders
 {
   couponCode?: "CODE123",
   deliveryAddress: "شارع النيل، عمّان",
+  deliveryAddressDetails?: "عمارة 10، الطابق الثاني، بجانب البنك العربي",
   deliveryCity: "Amman",
-  buyerNotes?: "توصيل سريع من فضلك"
+  buyerNotes?: "توصيل سريع من فضلك",
+  notes?: "نفس buyerNotes (alias اختياري)"
 }
 ```
 
@@ -101,8 +103,10 @@ POST /api/v1/orders
   buyerId: string,
   totalPrice: number,
   deliveryAddress: string,
+  deliveryAddressDetails?: string,
   deliveryCity: string,
   buyerNotes?: string,
+  notes?: string,
   status: "PENDING" | "CONFIRMED" | "SHIPPED" | "DELIVERED",
   items: [
     {
@@ -143,6 +147,7 @@ POST /api/v1/orders
       buyerId: "user-1",
       totalPrice: 25.50,
       deliveryAddress: "شارع النيل",
+      deliveryAddressDetails: "عمارة 10، الطابق الثاني، قرب البنك العربي",
       deliveryCity: "Amman",
       status: "PENDING",
       items: [
@@ -178,6 +183,7 @@ POST /api/v1/orders
         }
       ],
       buyerNotes: "توصيل سريع",
+      notes: "توصيل سريع",
       statusHistory: [
         { status: "PENDING", timestamp: "2025-01-15T10:00:00Z", note: null }
       ]
@@ -207,6 +213,7 @@ POST /api/v1/orders
 - [ ] عرض **Order ID** من `order.id`
 - [ ] عرض **Order Status** من `order.status` مع لون مناسب
 - [ ] عرض **Delivery Address** من `order.deliveryAddress`
+- [ ] عرض **Detailed Delivery Address** من `order.deliveryAddressDetails` (if applicable)
 - [ ] عرض جميع **Order Items** مع:
   - [ ] **Product Info**: name, image
   - [ ] **Size**: من `item.selectedSize.size`
@@ -215,6 +222,65 @@ POST /api/v1/orders
   - [ ] **Quantity** و **Price**
 - [ ] عرض **Order Total** من `order.totalPrice`
 - [ ] عرض **Buyer Notes** من `order.buyerNotes` (if applicable)
+
+### مثال كامل (React/TypeScript) للتوافق مع الحقول الجديدة
+
+```tsx
+type CheckoutPayload = {
+  couponCode?: string
+  deliveryAddress: string
+  deliveryAddressDetails?: string
+  deliveryCity: string
+  buyerNotes?: string
+  notes?: string
+}
+
+async function confirmOrder(token: string, payload: CheckoutPayload) {
+  const body = {
+    ...payload,
+    // ارسل حقل واحد فقط للملاحظات لتجنب الالتباس
+    buyerNotes: payload.buyerNotes?.trim() || undefined,
+    notes: undefined,
+    deliveryAddressDetails: payload.deliveryAddressDetails?.trim() || undefined,
+  }
+
+  const res = await fetch('/api/v1/orders', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  })
+
+  const json = await res.json()
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || 'Order confirmation failed')
+  }
+
+  return json.data.order as {
+    id: string
+    deliveryAddress: string
+    deliveryAddressDetails?: string | null
+    buyerNotes?: string | null
+    notes?: string | null
+  }
+}
+
+function DeliverySummary({ order }: { order: any }) {
+  const notes = order.buyerNotes ?? order.notes
+
+  return (
+    <div>
+      <p>العنوان: {order.deliveryAddress}</p>
+      {order.deliveryAddressDetails && (
+        <p>العنوان التفصيلي: {order.deliveryAddressDetails}</p>
+      )}
+      {notes && <p>ملاحظات: {notes}</p>}
+    </div>
+  )
+}
+```
 - [ ] عرض **Status History** من `order.statusHistory` كـ timeline
 
 ## قواعس البيانات المهمة

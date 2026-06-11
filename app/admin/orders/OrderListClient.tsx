@@ -18,6 +18,8 @@ interface Props {
     totalPrice: number
     status: string
     createdAt: Date
+    deliveryAddressDetails: string | null
+    buyerNotes: string | null
     buyer: { id: string; username: string; storeName: string | null; phone: string | null }
     items: Array<{ id: string; productName: string; quantity: number }>
   }>
@@ -112,6 +114,13 @@ export function OrderListClient({ orders, total, pages, currentPage, currentStat
                           <div>
                             <p className="font-medium text-gray-900">{order.buyer.storeName || order.buyer.username}</p>
                             {order.buyer.phone && <p className="text-xs text-gray-500">{order.buyer.phone}</p>}
+                            {(order.deliveryAddressDetails || order.buyerNotes) && (
+                              <p className="text-[11px] text-gray-500 mt-1">
+                                {order.deliveryAddressDetails ? 'يوجد عنوان تفصيلي' : ''}
+                                {order.deliveryAddressDetails && order.buyerNotes ? ' • ' : ''}
+                                {order.buyerNotes ? 'يوجد ملاحظات' : ''}
+                              </p>
+                            )}
                           </div>
                         </td>
                         <td className="py-3 text-gray-600">

@@ -170,18 +170,22 @@ export const updateCartItemSchema = z.object({
 // Order from cart validation
 export const createOrderFromCartSchema = z.object({
   deliveryAddress: z.string().min(5, 'Delivery address is required'),
+  deliveryAddressDetails: z.string().max(500, 'Detailed address is too long').optional(),
   deliveryCity: z.string().min(2, 'City is required'),
   deliveryCityId: z.string().optional(),
   deliveryAreaId: z.string().optional(),
   buyerNotes: z.string().optional(),
+  notes: z.string().max(1000, 'Notes are too long').optional(),
   couponCode: z.string().optional(),
 })
 
 // Buyer order update validation (only for PENDING orders)
 export const updateBuyerOrderSchema = z.object({
   deliveryAddress: z.string().min(5, 'Delivery address is required').optional(),
+  deliveryAddressDetails: z.string().max(500, 'Detailed address is too long').optional(),
   deliveryCity: z.string().min(2, 'City is required').optional(),
   buyerNotes: z.string().optional(),
+  notes: z.string().max(1000, 'Notes are too long').optional(),
 })
 
 // ============================================

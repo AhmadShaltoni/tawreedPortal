@@ -72,6 +72,7 @@ export interface Order {
   orderNumber: string
   totalPrice: number
   deliveryAddress: string
+  deliveryAddressDetails: string | null
   deliveryCity: string
   expectedDelivery: Date | null
   actualDelivery: Date | null

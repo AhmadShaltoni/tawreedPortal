@@ -21,6 +21,7 @@ interface Props {
     status: string
     statusHistory: unknown
     deliveryAddress: string
+    deliveryAddressDetails: string | null
     deliveryCity: string
     buyerNotes: string | null
     adminNotes: string | null
@@ -210,10 +211,16 @@ export function OrderDetailClient({ order }: Props) {
                 <p className="text-gray-500">{t.orderManagement.deliveryAddress}</p>
                 <p className="font-medium text-gray-900">{order.deliveryAddress}</p>
               </div>
+              {order.deliveryAddressDetails && (
+                <div>
+                  <p className="text-gray-500">العنوان التفصيلي</p>
+                  <p className="font-medium text-gray-900 whitespace-pre-line">{order.deliveryAddressDetails}</p>
+                </div>
+              )}
               {order.buyerNotes && (
                 <div>
-                  <p className="text-gray-500">{t.orderManagement.buyerNotes}</p>
-                  <p className="font-medium text-gray-900">{order.buyerNotes}</p>
+                  <p className="text-gray-500">{t.orderManagement.buyerNotes || 'ملاحظات العميل'}</p>
+                  <p className="font-medium text-gray-900 whitespace-pre-line">{order.buyerNotes}</p>
                 </div>
               )}
               <div>

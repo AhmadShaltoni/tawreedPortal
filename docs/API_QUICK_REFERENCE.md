@@ -235,8 +235,10 @@ GET /api/v1/orders?page=1&limit=10
 ```json
 {
   "deliveryAddress": "شارع النيل، عمّان",
+  "deliveryAddressDetails": "عمارة رقم 12، الطابق 3، بجانب صيدلية الشفاء",
   "deliveryCity": "Amman",
-  "buyerNotes": "توصيل سريع من فضلك",
+  "buyerNotes": "اتصل قبل الوصول بـ 10 دقائق",
+  "notes": "يرجى التسليم للموظف المناوب", // alias اختياري بدل buyerNotes
   "couponCode": "DISCOUNT20"  // اختياري
 }
 ```
@@ -306,8 +308,10 @@ GET /api/v1/orders/order-uuid-1
       "totalPrice": 25.50,
       "status": "CONFIRMED",
       "deliveryAddress": "شارع النيل، عمّان",
+      "deliveryAddressDetails": "عمارة 12، الطابق 3، قرب صيدلية الشفاء",
       "deliveryCity": "Amman",
       "buyerNotes": "توصيل سريع",
+      "notes": "توصيل سريع",
       "items": [
         {
           "id": "item-1",
@@ -347,8 +351,10 @@ GET /api/v1/orders/order-uuid-1
 ```json
 {
   "deliveryAddress": "شارع جديد",
+  "deliveryAddressDetails": "بجوار مسجد الروضة، مدخل B",
   "deliveryCity": "جديدة",
-  "buyerNotes": "تحديث الملاحظات"
+  "buyerNotes": "تحديث الملاحظات",
+  "notes": "تحديث الملاحظات"
 }
 ```
 

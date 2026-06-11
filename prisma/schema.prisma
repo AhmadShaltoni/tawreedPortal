@@ -298,6 +298,7 @@ model Order {
   
   // Delivery
   deliveryAddress String
+  deliveryAddressDetails String?
   deliveryCity    String
   deliveryCityId  String?
   deliveryAreaId  String?
