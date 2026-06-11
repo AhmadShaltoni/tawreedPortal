@@ -44,6 +44,11 @@ export function Footer() {
                   {t.footer.howItWorks}
                 </Link>
               </li>
+              <li>
+                <Link href="/privacy-policy.html" className="text-gray-400 hover:text-white transition-colors">
+                  Privacy Policy
+                </Link>
+              </li>
             </ul>
           </div>
 

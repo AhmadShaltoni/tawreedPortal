@@ -45,11 +45,17 @@ export function HeaderClient({ user }: HeaderClientProps) {
               <Link href="/#about" className="text-gray-600 hover:text-blue-900 transition-colors">
                 {t.nav.about}
               </Link>
+              <Link href="/privacy-policy.html" className="text-gray-600 hover:text-blue-900 transition-colors">
+                Privacy Policy
+              </Link>
             </nav>
           </div>
 
           {/* Auth buttons & Language Toggle */}
           <div className={`flex items-center gap-2 sm:gap-4 ${dir === 'rtl' ? 'flex-row-reverse ms-auto' : 'ms-auto'}`}>
+            <Link href="/privacy-policy.html" className="hidden sm:block">
+              <Button variant="outline">Privacy</Button>
+            </Link>
             <LanguageToggle />
             {user ? (
               <UserMenu user={user} />
