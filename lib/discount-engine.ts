@@ -27,7 +27,6 @@ async function getActiveCampaigns(): Promise<CampaignDiscount[]> {
   const campaigns = await db.discountCampaign.findMany({
     where: {
       status: 'ACTIVE',
-      startDate: { lte: currentDate },
       OR: [
         { endDate: null },
         { endDate: { gt: currentDate } },

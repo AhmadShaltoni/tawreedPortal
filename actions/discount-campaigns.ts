@@ -334,7 +334,6 @@ export async function getActiveDiscountForProduct(productId: string, categoryId:
   const campaigns = await db.discountCampaign.findMany({
     where: {
       status: 'ACTIVE',
-      startDate: { lte: now },
       OR: [
         { endDate: null },
         { endDate: { gt: now } },
@@ -395,7 +394,6 @@ export async function getActiveDiscountsForProducts(
   const campaigns = await db.discountCampaign.findMany({
     where: {
       status: 'ACTIVE',
-      startDate: { lte: now },
       OR: [
         { endDate: null },
         { endDate: { gt: now } },

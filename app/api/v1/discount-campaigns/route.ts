@@ -35,7 +35,6 @@ export async function GET(request: NextRequest) {
   const campaigns = await db.discountCampaign.findMany({
     where: {
       status: 'ACTIVE',
-      startDate: { lte: now },
       OR: [
         { endDate: null },
         { endDate: { gt: now } },
