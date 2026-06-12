@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { apiResponse, corsOptions } from '@/lib/api-auth'
+import { calcProductDiscounts, applyDiscount } from '@/lib/discount-engine'
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -76,8 +77,10 @@ export async function GET(request: NextRequest) {
           name: true,
           nameEn: true,
           image: true,
+          categoryId: true,
           category: { select: { id: true, name: true, nameEn: true, slug: true } },
           brand: { select: { id: true, name: true, nameEn: true, logo: true } },
+          collections: { select: { collectionId: true } },
           variants: {
             where: { isActive: true },
             orderBy: { sortOrder: 'asc' },
@@ -98,8 +101,30 @@ export async function GET(request: NextRequest) {
       db.product.count({ where }),
     ])
 
+    // Calculate campaign discounts for all products in batch
+    const discountMap = await calcProductDiscounts(
+      products.map(p => ({
+        id: p.id,
+        categoryId: p.categoryId,
+        collectionIds: p.collections.map(c => c.collectionId),
+      }))
+    )
+
     const productCards = products.map((p) => {
       const defaultUnit = p.variants[0]?.units[0]
+      const originalPrice = defaultUnit?.price ?? 0
+      const campaignDiscount = discountMap.get(p.id) || 0
+      const hasManualDiscount = defaultUnit?.compareAtPrice != null && defaultUnit.compareAtPrice > originalPrice
+      const hasCampaignDiscount = campaignDiscount > 0
+
+      let displayPrice = originalPrice
+      let displayCompareAtPrice: number | null = defaultUnit?.compareAtPrice ?? null
+
+      if (hasCampaignDiscount) {
+        displayPrice = applyDiscount(originalPrice, campaignDiscount)
+        displayCompareAtPrice = originalPrice
+      }
+
       return {
         id: p.id,
         name: p.name,
@@ -107,8 +132,10 @@ export async function GET(request: NextRequest) {
         image: p.image,
         brand: p.brand,
         primaryCategory: p.category,
-        startingPrice: defaultUnit?.price ?? 0,
-        hasDiscount: defaultUnit?.compareAtPrice != null && defaultUnit.compareAtPrice > (defaultUnit?.price ?? 0),
+        startingPrice: displayPrice,
+        compareAtPrice: displayCompareAtPrice,
+        hasDiscount: hasManualDiscount || hasCampaignDiscount,
+        discountPercent: hasCampaignDiscount ? campaignDiscount : null,
         inStock: true,
       }
     })
@@ -126,6 +153,7 @@ export async function GET(request: NextRequest) {
       include: {
         category: { select: { id: true, name: true, nameEn: true, slug: true } },
         brand: { select: { id: true, name: true, nameEn: true, slug: true, logo: true } },
+        collections: { select: { collectionId: true } },
         variants: {
           where: { isActive: true, stock: { gt: 0 } },
           orderBy: { sortOrder: 'asc' },
@@ -168,8 +196,45 @@ export async function GET(request: NextRequest) {
     db.product.count({ where }),
   ])
 
+  // Calculate campaign discounts for all products in batch
+  const discountMap = await calcProductDiscounts(
+    products.map(p => ({
+      id: p.id,
+      categoryId: p.categoryId,
+      collectionIds: p.collections.map(c => c.collectionId),
+    }))
+  )
+
+  // Apply campaign discounts to product units
+  const productsWithDiscounts = products.map(p => {
+    const campaignDiscount = discountMap.get(p.id) || 0
+    if (campaignDiscount === 0) {
+      // Remove collections from response (internal only)
+      const { collections, ...rest } = p
+      return rest
+    }
+
+    const { collections, ...rest } = p
+    return {
+      ...rest,
+      discountPercent: campaignDiscount,
+      variants: rest.variants.map(v => ({
+        ...v,
+        units: v.units.map(u => ({
+          ...u,
+          compareAtPrice: u.price, // Original price becomes compareAtPrice
+          price: applyDiscount(u.price, campaignDiscount), // Discounted price
+        })),
+        options: v.options.map(o => ({
+          ...o,
+          priceOverride: o.priceOverride ? applyDiscount(o.priceOverride, campaignDiscount) : null,
+        })),
+      })),
+    }
+  })
+
   return apiResponse({
-    products,
+    products: productsWithDiscounts,
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   })
 }

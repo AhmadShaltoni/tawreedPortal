@@ -414,6 +414,7 @@ model Category {
   products    Product[]            // Legacy direct FK (primary category shortcut)
   productCategories ProductOnCategory[]  // Many-to-many product classification
   tags        Tag[]                // Filter tabs within this category
+  discountCampaigns DiscountCampaign[] // Discount campaigns targeting this category
   
   @@index([sortOrder])
   @@index([isActive])
@@ -479,6 +480,7 @@ model Collection {
   
   // Relations
   products        CollectionProduct[]
+  discountCampaigns DiscountCampaign[] // Discount campaigns targeting this collection
   
   @@index([isActive])
   @@index([showOnHome])
@@ -597,6 +599,7 @@ model Product {
   categories      ProductOnCategory[]   // Many-to-many category classification
   collections     CollectionProduct[]   // Virtual groupings (Offers, Best Sellers, etc.)
   tags            ProductTag[]          // Filter tags
+  discountCampaigns DiscountCampaignProduct[] // Discount campaigns targeting this product
   
   @@index([categoryId])
   @@index([brandId])
@@ -1253,4 +1256,77 @@ model DeliveryPromotion {
   orders          Order[]
 
   @@index([isActive, startDate, endDate])
+}
+
+// ============================================
+// DISCOUNT CAMPAIGN SYSTEM
+// ============================================
+
+// Scope of a discount campaign
+enum DiscountCampaignScope {
+  ALL_PRODUCTS          // Applies to every product
+  SPECIFIC_PRODUCTS     // Applies to selected products only
+  COLLECTION            // Applies to all products in a collection
+  CATEGORY              // Applies to all products in a category
+}
+
+// Discount campaign status
+enum DiscountCampaignStatus {
+  ACTIVE                // Currently applying
+  PAUSED                // Temporarily stopped
+  EXPIRED               // End date passed (auto-set by system)
+  SCHEDULED             // Start date in future
+}
+
+// Discount Campaign (admin-managed price reductions)
+model DiscountCampaign {
+  id              String                   @id @default(cuid())
+  
+  // Basic info
+  name            String                   // Arabic name: "خصم نهاية الأسبوع"
+  nameEn          String?                  // English name: "Weekend Discount"
+  
+  // Discount settings
+  discountPercent Float                    // e.g., 5.0 = 5%
+  
+  // Scheduling
+  startDate       DateTime                 // When discount begins
+  endDate         DateTime?                // When discount ends (null = open-ended)
+  
+  // Scope: what does this campaign apply to?
+  scope           DiscountCampaignScope    @default(SPECIFIC_PRODUCTS)
+  
+  // When scope = COLLECTION, reference the collection
+  collectionId    String?
+  collection      Collection?              @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  
+  // When scope = CATEGORY, reference the category
+  categoryId      String?
+  category        Category?                @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  
+  // Status
+  status          DiscountCampaignStatus   @default(ACTIVE)
+  
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  
+  // Relations
+  products        DiscountCampaignProduct[] // When scope = SPECIFIC_PRODUCTS
+  
+  @@index([status, startDate, endDate])
+  @@index([scope])
+  @@index([collectionId])
+  @@index([categoryId])
+}
+
+// Junction table: Products in a specific discount campaign
+model DiscountCampaignProduct {
+  campaignId  String
+  productId   String
+  
+  campaign    DiscountCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  product     Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  @@id([campaignId, productId])
+  @@index([productId])
 }

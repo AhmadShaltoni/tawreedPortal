@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { apiResponse, corsOptions } from '@/lib/api-auth'
+import { calcProductDiscounts, applyDiscount } from '@/lib/discount-engine'
 
 export async function OPTIONS() {
   return corsOptions()
@@ -30,6 +31,7 @@ export async function GET() {
                 nameEn: true,
                 image: true,
                 isActive: true,
+                categoryId: true,
                 brand: { select: { id: true, name: true, nameEn: true, slug: true } },
                 variants: {
                   where: { isActive: true },
@@ -86,12 +88,49 @@ export async function GET() {
     }),
   ])
 
-  // Filter out inactive products from collections
+  // Collect all active products from all collections
+  const allProducts: { id: string; categoryId: string; collectionIds: string[] }[] = []
+  for (const col of collections) {
+    for (const cp of col.products) {
+      if (cp.product.isActive) {
+        allProducts.push({
+          id: cp.product.id,
+          categoryId: cp.product.categoryId,
+          collectionIds: [col.id],
+        })
+      }
+    }
+  }
+
+  // Calculate discounts in one batch
+  const discountMap = await calcProductDiscounts(allProducts)
+
+  // Filter out inactive products from collections and apply discounts
   const processedCollections = collections.map((col) => ({
     ...col,
     products: col.products
       .filter((cp) => cp.product.isActive)
-      .map((cp) => cp.product),
+      .map((cp) => {
+        const product = cp.product
+        const campaignDiscount = discountMap.get(product.id) || 0
+        if (campaignDiscount === 0) {
+          const { categoryId, ...rest } = product
+          return rest
+        }
+        const { categoryId, ...rest } = product
+        return {
+          ...rest,
+          discountPercent: campaignDiscount,
+          variants: rest.variants.map(v => ({
+            ...v,
+            units: v.units.map(u => ({
+              ...u,
+              compareAtPrice: u.price,
+              price: applyDiscount(u.price, campaignDiscount),
+            })),
+          })),
+        }
+      }),
   }))
 
   return apiResponse({

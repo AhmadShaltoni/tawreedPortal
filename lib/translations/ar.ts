@@ -508,6 +508,7 @@ export const ar = {
     coupons: 'أكواد الخصم',
     revenue: 'الإيرادات والأرباح',
     loyalty: 'نظام الولاء',
+    marketingSections: 'أقسام التسويق',
     settings: 'الإعدادات',
     welcome: 'مرحباً بك في لوحة التحكم',
     subtitle: 'إدارة المنتجات والطلبات والمستخدمين',

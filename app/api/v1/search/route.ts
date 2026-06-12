@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { apiResponse, apiError, corsOptions } from '@/lib/api-auth'
+import { calcProductDiscounts, applyDiscount } from '@/lib/discount-engine'
 
 export async function OPTIONS() {
   return corsOptions()
@@ -42,8 +43,10 @@ export async function GET(request: NextRequest) {
         name: true,
         nameEn: true,
         image: true,
+        categoryId: true,
         brand: { select: { id: true, name: true, nameEn: true, slug: true } },
         category: { select: { id: true, name: true, nameEn: true, slug: true } },
+        collections: { select: { collectionId: true } },
         variants: {
           where: { isActive: true },
           take: 1,
@@ -65,8 +68,36 @@ export async function GET(request: NextRequest) {
     db.product.count({ where }),
   ])
 
+  // Apply campaign discounts
+  const discountMap = await calcProductDiscounts(
+    products.map(p => ({
+      id: p.id,
+      categoryId: p.categoryId,
+      collectionIds: p.collections.map(c => c.collectionId),
+    }))
+  )
+
+  const productsWithDiscounts = products.map(p => {
+    const campaignDiscount = discountMap.get(p.id) || 0
+    const { categoryId, collections, ...rest } = p
+    if (campaignDiscount === 0) return rest
+
+    return {
+      ...rest,
+      discountPercent: campaignDiscount,
+      variants: rest.variants.map(v => ({
+        ...v,
+        units: v.units.map(u => ({
+          ...u,
+          compareAtPrice: u.price,
+          price: applyDiscount(u.price, campaignDiscount),
+        })),
+      })),
+    }
+  })
+
   return apiResponse({
-    products,
+    products: productsWithDiscounts,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   })
 }

@@ -3,13 +3,31 @@
  * Including size (variant), flavor (option), and selling unit information
  */
 
+import { calcProductDiscount, applyDiscount } from '@/lib/discount-engine'
+
 export async function formatCartItem(item: any) {
   // Get variant and ensure units are available
   const variant = item.variant
   const units = Array.isArray(variant?.units) ? variant.units : []
   
   const selectedUnit = item.productUnit || units.find((u: any) => u.isDefault)
-  const unitPrice = item.variantOption?.priceOverride ?? selectedUnit?.price ?? 0
+  let unitPrice = item.variantOption?.priceOverride ?? selectedUnit?.price ?? 0
+
+  // Calculate campaign discount for this product
+  const productId = variant?.product?.id
+  const categoryId = variant?.product?.categoryId || variant?.product?.category?.id || ''
+  const collectionIds = variant?.product?.collections?.map((c: any) => c.collectionId) || []
+  
+  let campaignDiscount = 0
+  let originalPrice = unitPrice
+  
+  if (productId) {
+    campaignDiscount = await calcProductDiscount(productId, categoryId, collectionIds)
+    if (campaignDiscount > 0) {
+      originalPrice = unitPrice
+      unitPrice = applyDiscount(unitPrice, campaignDiscount)
+    }
+  }
 
   return {
     id: item.id,
@@ -44,14 +62,15 @@ export async function formatCartItem(item: any) {
       label: selectedUnit.label,
       labelEn: selectedUnit.labelEn,
       piecesPerUnit: selectedUnit.piecesPerUnit,
-      price: selectedUnit.price,
-      compareAtPrice: selectedUnit.compareAtPrice,
+      price: campaignDiscount > 0 ? applyDiscount(selectedUnit.price, campaignDiscount) : selectedUnit.price,
+      compareAtPrice: campaignDiscount > 0 ? selectedUnit.price : selectedUnit.compareAtPrice,
     } : null,
     // Pricing
     pricing: {
       pricePerUnit: unitPrice,
-      compareAtPricePerUnit: item.variantOption?.priceOverride ? null : selectedUnit?.compareAtPrice,
-      subtotal: unitPrice * item.quantity,
+      compareAtPricePerUnit: campaignDiscount > 0 ? originalPrice : (item.variantOption?.priceOverride ? null : selectedUnit?.compareAtPrice),
+      subtotal: Math.round(unitPrice * item.quantity * 100) / 100,
+      discountPercent: campaignDiscount > 0 ? campaignDiscount : null,
     },
   }
 }
@@ -63,6 +82,7 @@ export const CART_ITEM_INCLUDE = {
         include: {
           category: { select: { id: true, name: true, nameEn: true, slug: true } },
           brand: { select: { id: true, name: true, nameEn: true, logo: true } },
+          collections: { select: { collectionId: true } },
         },
       },
       units: { orderBy: { sortOrder: 'asc' as const } },

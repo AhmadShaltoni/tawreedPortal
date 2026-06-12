@@ -518,6 +518,7 @@ export const en: TranslationKeys = {
     coupons: 'Discount Codes',
     revenue: 'Revenue & Profit',
     loyalty: 'Loyalty Program',
+    marketingSections: 'Marketing Sections',
     settings: 'Settings',
     welcome: 'Welcome to Dashboard',
     subtitle: 'Manage products, orders, and users',
