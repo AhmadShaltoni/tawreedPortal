@@ -50,6 +50,8 @@ interface Props {
       unit: string
       pricePerUnit: number
       totalPrice: number
+      originalPricePerUnit: number | null
+      discountPercent: number | null
       product: { id: string; name: string; image: string | null }
     }>
   }
@@ -136,11 +138,28 @@ export function OrderDetailClient({ order }: Props) {
                           <p>{lang === 'ar' ? item.unitLabel : (item.unitLabelEn || item.unitLabel)}</p>
                         )}
                       </div>
-                      <p className="text-sm text-gray-500 mt-1">
-                        {item.quantity} × {formatCurrency(item.pricePerUnit)}
-                      </p>
+                      <div className="text-sm text-gray-500 mt-1">
+                        {item.originalPricePerUnit && item.discountPercent ? (
+                          <p>
+                            {item.quantity} × <span className="line-through text-gray-400">{formatCurrency(item.originalPricePerUnit)}</span>{' '}
+                            <span className="text-red-600 font-medium">{formatCurrency(item.pricePerUnit)}</span>
+                            <span className="text-red-500 text-xs mr-1">(-{item.discountPercent}%)</span>
+                          </p>
+                        ) : (
+                          <p>{item.quantity} × {formatCurrency(item.pricePerUnit)}</p>
+                        )}
+                      </div>
                     </div>
-                    <p className="font-semibold text-gray-900">{formatCurrency(item.totalPrice)}</p>
+                    <div className="text-left">
+                      {item.originalPricePerUnit && item.discountPercent ? (
+                        <>
+                          <p className="line-through text-sm text-gray-400">{formatCurrency(item.originalPricePerUnit * item.quantity)}</p>
+                          <p className="font-semibold text-red-600">{formatCurrency(item.totalPrice)}</p>
+                        </>
+                      ) : (
+                        <p className="font-semibold text-gray-900">{formatCurrency(item.totalPrice)}</p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -374,8 +374,12 @@ model OrderItem {
   // Pricing
   quantity      Int
   unit          Unit
-  pricePerUnit  Float
-  totalPrice    Float
+  pricePerUnit  Float     // Actual price paid (after discount if any)
+  totalPrice    Float     // pricePerUnit × quantity
+  
+  // Discount snapshot (captured at order time)
+  originalPricePerUnit Float?   // Price before campaign discount (null = no discount)
+  discountPercent      Float?   // Campaign discount % applied (null = no discount)
   
   // Relations
   orderId       String

@@ -4,6 +4,7 @@ import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/li
 import { createOrderFromCartSchema } from '@/lib/validations'
 import { sendPushToRole } from '@/lib/push-notifications'
 import { calculateDeliveryFee } from '@/actions/delivery'
+import { calcProductDiscounts, applyDiscount } from '@/lib/discount-engine'
 import type { DiscountCode } from '@prisma/client'
 
 class OrderValidationError extends Error {
@@ -109,7 +110,11 @@ export async function POST(request: NextRequest) {
     include: {
       variant: {
         include: {
-          product: true,
+          product: {
+            include: {
+              collections: { select: { collectionId: true } },
+            },
+          },
           options: { where: { isActive: true }, select: { id: true } },
         },
       },
@@ -154,10 +159,21 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Calculate total (using option priceOverride if set, otherwise unit price)
+  // Calculate campaign discounts for all products in cart
+  const campaignDiscountMap = await calcProductDiscounts(
+    cartItems.map(item => ({
+      id: item.variant.product.id,
+      categoryId: item.variant.product.categoryId,
+      collectionIds: item.variant.product.collections?.map((c: { collectionId: string }) => c.collectionId) || [],
+    }))
+  )
+
+  // Calculate total (using option priceOverride if set, otherwise unit price) with campaign discounts applied
   const totalPrice = cartItems.reduce((sum, item) => {
-    const unitPrice = item.variantOption?.priceOverride ?? item.productUnit?.price ?? 0
-    return sum + unitPrice * item.quantity
+    const originalUnitPrice = item.variantOption?.priceOverride ?? item.productUnit?.price ?? 0
+    const campaignDiscount = campaignDiscountMap.get(item.variant.product.id) || 0
+    const effectivePrice = campaignDiscount > 0 ? applyDiscount(originalUnitPrice, campaignDiscount) : originalUnitPrice
+    return sum + effectivePrice * item.quantity
   }, 0)
 
   // Validate coupon code if provided
@@ -296,7 +312,9 @@ export async function POST(request: NextRequest) {
           ],
           items: {
             create: cartItems.map((item) => {
-              const unitPrice = item.variantOption?.priceOverride ?? item.productUnit?.price ?? 0
+              const originalUnitPrice = item.variantOption?.priceOverride ?? item.productUnit?.price ?? 0
+              const campaignDiscount = campaignDiscountMap.get(item.variant.product.id) || 0
+              const effectivePrice = campaignDiscount > 0 ? applyDiscount(originalUnitPrice, campaignDiscount) : originalUnitPrice
               const unit = item.productUnit?.unit ?? 'PIECE'
               const piecesPerUnit = item.productUnit?.piecesPerUnit ?? 1
               const unitLabel = item.productUnit?.label ?? null
@@ -312,8 +330,10 @@ export async function POST(request: NextRequest) {
                 variantOptionNameEn: item.variantOption?.nameEn ?? null,
                 quantity: item.quantity,
                 unit,
-                pricePerUnit: unitPrice,
-                totalPrice: unitPrice * item.quantity,
+                pricePerUnit: effectivePrice,
+                totalPrice: Math.round(effectivePrice * item.quantity * 100) / 100,
+                originalPricePerUnit: campaignDiscount > 0 ? originalUnitPrice : null,
+                discountPercent: campaignDiscount > 0 ? campaignDiscount : null,
                 piecesPerUnit,
                 unitLabel,
                 unitLabelEn,

@@ -58,6 +58,8 @@ export async function GET(
     unit: item.unit,
     pricing: {
       pricePerUnit: item.pricePerUnit,
+      originalPricePerUnit: item.originalPricePerUnit,
+      discountPercent: item.discountPercent,
       subtotal: item.totalPrice,
     },
   }))
