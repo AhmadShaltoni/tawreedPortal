@@ -161,10 +161,12 @@ export const addToCartSchema = z.object({
   quantity: z.coerce.number().int().positive('Quantity must be at least 1'),
   productUnitId: z.string().optional(),
   variantOptionId: z.string().optional(),
+  note: z.string().max(500, 'Note is too long').optional(),
 })
 
 export const updateCartItemSchema = z.object({
   quantity: z.coerce.number().int().positive('Quantity must be at least 1'),
+  note: z.string().max(500, 'Note is too long').optional(),
 })
 
 // Order from cart validation
@@ -177,6 +179,10 @@ export const createOrderFromCartSchema = z.object({
   buyerNotes: z.string().optional(),
   notes: z.string().max(1000, 'Notes are too long').optional(),
   couponCode: z.string().optional(),
+  itemNotes: z.array(z.object({
+    cartItemId: z.string().min(1),
+    note: z.string().max(500, 'Note is too long'),
+  })).optional(),
 })
 
 // Buyer order update validation (only for PENDING orders)

@@ -381,6 +381,9 @@ model OrderItem {
   originalPricePerUnit Float?   // Price before campaign discount (null = no discount)
   discountPercent      Float?   // Campaign discount % applied (null = no discount)
   
+  // Buyer note for this item
+  note          String?  // Optional note from buyer about this specific item
+  
   // Relations
   orderId       String
   order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -701,6 +704,7 @@ model ProductUnit {
 model CartItem {
   id          String   @id @default(cuid())
   quantity    Int      @default(1)
+  note        String?  // Optional note from buyer about this item
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

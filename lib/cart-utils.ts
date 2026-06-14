@@ -32,6 +32,7 @@ export async function formatCartItem(item: any) {
   return {
     id: item.id,
     quantity: item.quantity,
+    note: item.note || null,
     product: {
       id: variant?.product?.id,
       name: variant?.product?.name,

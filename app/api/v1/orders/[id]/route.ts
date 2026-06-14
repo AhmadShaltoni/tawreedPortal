@@ -62,6 +62,7 @@ export async function GET(
       discountPercent: item.discountPercent,
       subtotal: item.totalPrice,
     },
+    note: item.note || null,
   }))
 
   return apiResponse({ 

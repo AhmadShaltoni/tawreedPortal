@@ -52,6 +52,7 @@ interface Props {
       totalPrice: number
       originalPricePerUnit: number | null
       discountPercent: number | null
+      note: string | null
       product: { id: string; name: string; image: string | null }
     }>
   }
@@ -113,7 +114,8 @@ export function OrderDetailClient({ order }: Props) {
             <CardContent>
               <div className="space-y-4">
                 {order.items.map((item) => (
-                  <div key={item.id} className={`flex items-center gap-4 p-3 bg-gray-50 rounded-lg ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                  <div key={item.id}>
+                    <div className={`flex items-center gap-4 p-3 bg-gray-50 rounded-lg ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
                     <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
                       {item.productImage || item.product.image ? (
                         <Image src={item.productImage || item.product.image || ''} alt={item.productName} width={64} height={64} className="object-cover w-full h-full" />
@@ -160,6 +162,14 @@ export function OrderDetailClient({ order }: Props) {
                         <p className="font-semibold text-gray-900">{formatCurrency(item.totalPrice)}</p>
                       )}
                     </div>
+                    </div>
+                    {item.note && (
+                      <div className="mt-1 px-3 py-2 bg-red-50 border border-red-200 rounded-md">
+                        <p className="text-sm text-red-700">
+                          <span className="font-medium">{lang === 'ar' ? 'ملاحظة:' : 'Note:'}</span> {item.note}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

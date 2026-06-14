@@ -79,6 +79,7 @@ export async function GET(request: NextRequest) {
           piecesPerUnit: item.piecesPerUnit,
         },
         quantity: item.quantity,
+        note: item.note || null,
       }))
       return {
         ...order,
@@ -250,6 +251,20 @@ export async function POST(request: NextRequest) {
     const normalizedNotes = (validated.data.buyerNotes ?? validated.data.notes ?? '').trim() || null
     const normalizedAddressDetails = (validated.data.deliveryAddressDetails ?? '').trim() || null
 
+    // Build itemNotes map: cartItemId -> note (from request body or cart item)
+    const itemNotesMap = new Map<string, string>()
+    if (validated.data.itemNotes) {
+      for (const { cartItemId, note } of validated.data.itemNotes) {
+        if (note?.trim()) itemNotesMap.set(cartItemId, note.trim())
+      }
+    }
+    // Fallback: use note stored in cart item if not overridden
+    for (const item of cartItems) {
+      if (!itemNotesMap.has(item.id) && item.note?.trim()) {
+        itemNotesMap.set(item.id, item.note.trim())
+      }
+    }
+
     order = await db.$transaction(async (tx) => {
       // Decrease stock atomically before creating the order. This prevents
       // another checkout from consuming the same stock between verification and save.
@@ -337,6 +352,7 @@ export async function POST(request: NextRequest) {
                 piecesPerUnit,
                 unitLabel,
                 unitLabelEn,
+                note: itemNotesMap.get(item.id) || null,
               }
             }),
           },

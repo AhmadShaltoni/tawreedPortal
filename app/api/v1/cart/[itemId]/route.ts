@@ -48,7 +48,10 @@ export async function PATCH(
 
   const updated = await db.cartItem.update({
     where: { id: itemId },
-    data: { quantity: validated.data.quantity },
+    data: {
+      quantity: validated.data.quantity,
+      ...(validated.data.note !== undefined ? { note: validated.data.note.trim() || null } : {}),
+    },
     include: CART_ITEM_INCLUDE,
   })
 

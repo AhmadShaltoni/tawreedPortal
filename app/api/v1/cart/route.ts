@@ -103,6 +103,8 @@ export async function POST(request: NextRequest) {
     },
   })
 
+  const noteValue = validated.data.note?.trim() || null
+
   let cartItem
   if (existing) {
     // Item already exists - increment the quantity
@@ -130,7 +132,7 @@ export async function POST(request: NextRequest) {
 
     cartItem = await db.cartItem.update({
       where: { id: existing.id },
-      data: { quantity: newQuantity },
+      data: { quantity: newQuantity, ...(noteValue !== null ? { note: noteValue } : {}) },
       include: CART_ITEM_INCLUDE,
     })
   } else {
@@ -142,6 +144,7 @@ export async function POST(request: NextRequest) {
         productUnitId: productUnitId,
         variantOptionId: variantOptionId,
         quantity: validated.data.quantity,
+        note: noteValue,
       },
       include: CART_ITEM_INCLUDE,
     })
