@@ -609,7 +609,9 @@ export async function getProducts(options?: {
     db.product.findMany({
       where,
       include: {
-        category: true,
+        category: {
+          include: { parent: true },
+        },
         supplier: true,
         variants: {
           orderBy: { sortOrder: 'asc' },
@@ -624,6 +626,57 @@ export async function getProducts(options?: {
   ])
 
   return { products, total, pages: Math.ceil(total / limit) }
+}
+
+export async function moveProductsToCategory(productIds: string[], categoryId: string): Promise<ActionResponse> {
+  const { authorized, error } = await requireRole(['ADMIN'])
+  if (!authorized) return { success: false, error: error ?? 'Not authorized' }
+
+  if (!productIds.length) return { success: false, error: 'No products selected' }
+  if (!categoryId) return { success: false, error: 'No category selected' }
+
+  // Verify the category exists
+  const category = await db.category.findUnique({ where: { id: categoryId } })
+  if (!category) return { success: false, error: 'Category not found' }
+
+  await db.product.updateMany({
+    where: { id: { in: productIds } },
+    data: { categoryId },
+  })
+
+  revalidatePath('/admin/products')
+  revalidatePath('/admin/categories')
+  return { success: true }
+}
+
+export async function removeProductsFromCategory(productIds: string[]): Promise<ActionResponse> {
+  const { authorized, error } = await requireRole(['ADMIN'])
+  if (!authorized) return { success: false, error: error ?? 'Not authorized' }
+
+  if (!productIds.length) return { success: false, error: 'No products selected' }
+
+  await db.product.deleteMany({
+    where: { id: { in: productIds } },
+  })
+
+  revalidatePath('/admin/products')
+  revalidatePath('/admin/categories')
+  return { success: true }
+}
+
+export async function getProductsByCategory(categoryId: string) {
+  return db.product.findMany({
+    where: { categoryId },
+    include: {
+      category: true,
+      supplier: true,
+      variants: {
+        orderBy: { sortOrder: 'asc' },
+        include: { units: { orderBy: { sortOrder: 'asc' } } },
+      },
+    },
+    orderBy: { sortOrder: 'asc' },
+  })
 }
 
 export async function getProductById(id: string) {

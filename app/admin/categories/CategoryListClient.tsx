@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Plus, GripVertical, Trash2, X, FolderOpen, FileText, ChevronLeft, Home } from 'lucide-react'
+import { Plus, GripVertical, Trash2, X, FolderOpen, FileText, ChevronLeft, Home, Package } from 'lucide-react'
 import { useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
@@ -294,7 +294,18 @@ export function CategoryListClient({ categories, breadcrumb, parentId, parentNam
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="py-3 text-gray-700">{cat._count.products}</td>
+                        <td className="py-3 text-gray-700">
+                          {cat._count.products > 0 ? (
+                            <Link
+                              href={`/admin/categories/${cat.id}/products`}
+                              className="text-blue-600 hover:underline font-medium"
+                            >
+                              {cat._count.products}
+                            </Link>
+                          ) : (
+                            <span className="text-gray-400">0</span>
+                          )}
+                        </td>
                         <td className="py-3">
                           <Badge status={cat.isActive ? 'active' : 'inactive'}>
                             {cat.isActive ? t.productManagement.active : t.productManagement.inactive}
@@ -302,6 +313,14 @@ export function CategoryListClient({ categories, breadcrumb, parentId, parentNam
                         </td>
                         <td className="py-3">
                           <div className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                            {cat._count.products > 0 && (
+                              <Link href={`/admin/categories/${cat.id}/products`}>
+                                <Button variant="ghost" size="sm" className={`flex items-center gap-1 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                                  <Package className="w-3.5 h-3.5" />
+                                  {lang === 'ar' ? 'المنتجات' : 'Products'}
+                                </Button>
+                              </Link>
+                            )}
                             <Link href={`/admin/categories/${cat.id}`}>
                               <Button variant="ghost" size="sm">{t.common.edit}</Button>
                             </Link>

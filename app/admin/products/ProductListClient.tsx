@@ -3,14 +3,14 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { Plus, Search, GripVertical, Trash2, X, FileDown, ArrowUpToLine, RotateCcw } from 'lucide-react'
+import { Plus, Search, GripVertical, Trash2, X, FileDown, ArrowUpToLine, RotateCcw, FolderInput } from 'lucide-react'
 import { useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { useLanguage } from '@/lib/LanguageContext'
 import { formatCurrency } from '@/lib/utils'
-import { toggleProductActive, deleteProduct, reorderProducts, moveProductsToTop, moveProductsToPosition } from '@/actions/products'
+import { toggleProductActive, deleteProduct, reorderProducts, moveProductsToTop, moveProductsToPosition, moveProductsToCategory } from '@/actions/products'
 import { getAllProductsForExport } from '@/actions/export-products'
 import { generateProductsPDF, type ProductExportRow } from '@/lib/pdf-products'
 
@@ -30,7 +30,7 @@ interface Props {
     image: string | null
     isActive: boolean
     sortOrder: number
-    category: { id: string; name: string; nameEn: string | null }
+    category: { id: string; name: string; nameEn: string | null; parent?: { id: string; name: string; nameEn: string | null } | null }
     supplier: { id: string; name: string; nameEn: string | null } | null
     variants: Array<{
       id: string
@@ -94,6 +94,9 @@ export function ProductListClient({
   const [movingToTop, setMovingToTop] = useState(false)
   const [targetPosition, setTargetPosition] = useState('')
   const [movingToPosition, setMovingToPosition] = useState(false)
+  const [showMoveToCategoryModal, setShowMoveToCategoryModal] = useState(false)
+  const [targetCategoryId, setTargetCategoryId] = useState('')
+  const [movingToCategory, setMovingToCategory] = useState(false)
   const dragCounter = useRef<Record<string, number>>({})
 
   // Sync when products prop changes (e.g. after server refresh)
@@ -134,6 +137,17 @@ export function ProductListClient({
     setTargetPosition('')
     setMovingToPosition(false)
     router.push('/admin/products')
+    router.refresh()
+  }
+
+  async function handleMoveToCategory() {
+    if (!targetCategoryId || selectedIds.length === 0) return
+    setMovingToCategory(true)
+    await moveProductsToCategory(selectedIds, targetCategoryId)
+    setSelectedIds([])
+    setTargetCategoryId('')
+    setMovingToCategory(false)
+    setShowMoveToCategoryModal(false)
     router.refresh()
   }
 
@@ -439,6 +453,15 @@ export function ProductListClient({
                 <RotateCcw className="w-4 h-4" />
                 {lang === 'ar' ? 'إلغاء' : 'Clear'}
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowMoveToCategoryModal(true)}
+                className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}
+              >
+                <FolderInput className="w-4 h-4" />
+                {lang === 'ar' ? 'نقل لصنف' : 'Move to category'}
+              </Button>
             </div>
           </div>
         </div>
@@ -532,7 +555,10 @@ export function ProductListClient({
                           </Link>
                         </td>
                         <td className="py-3 text-gray-600">
-                          {lang === 'ar' ? product.category.name : (product.category.nameEn || product.category.name)}
+                          {product.category.parent
+                            ? `${lang === 'ar' ? product.category.parent.name : (product.category.parent.nameEn || product.category.parent.name)} - ${lang === 'ar' ? product.category.name : (product.category.nameEn || product.category.name)}`
+                            : (lang === 'ar' ? product.category.name : (product.category.nameEn || product.category.name))
+                          }
                         </td>
                         <td className="py-3 text-gray-600 text-xs">
                           {product.supplier
@@ -652,6 +678,61 @@ export function ProductListClient({
                 className="flex-1"
               >
                 {deleting ? t.common.loading : t.common.delete}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Move to Category Modal */}
+      {showMoveToCategoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowMoveToCategoryModal(false)}>
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4"
+            onClick={(e) => e.stopPropagation()}
+            dir={dir}
+          >
+            <div className={`flex items-center justify-between mb-4 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+              <h3 className="text-lg font-semibold text-gray-900">
+                {lang === 'ar' ? 'نقل المنتجات لصنف' : 'Move products to category'}
+              </h3>
+              <button onClick={() => setShowMoveToCategoryModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              {lang === 'ar'
+                ? `سيتم نقل ${selectedIds.length} منتج إلى الصنف المحدد`
+                : `${selectedIds.length} products will be moved to the selected category`
+              }
+            </p>
+            <select
+              value={targetCategoryId}
+              onChange={(e) => setTargetCategoryId(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg py-2 px-3 mb-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">{lang === 'ar' ? 'اختر الصنف...' : 'Select category...'}</option>
+              {flattenCategoryTree(categoryTree, lang).map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <div className={`flex gap-3 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+              <Button
+                variant="outline"
+                onClick={() => setShowMoveToCategoryModal(false)}
+                className="flex-1"
+              >
+                {t.common.cancel}
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleMoveToCategory}
+                disabled={movingToCategory || !targetCategoryId}
+                className="flex-1"
+              >
+                {movingToCategory ? t.common.loading : (lang === 'ar' ? 'نقل' : 'Move')}
               </Button>
             </div>
           </div>
