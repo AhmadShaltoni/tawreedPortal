@@ -133,6 +133,7 @@ async function sendMulticastBatched(
               ? {
                   code: resp.error.code,
                   message: resp.error.message,
+                  fullError: JSON.stringify(resp.error, null, 2),
                 }
               : undefined,
           })
