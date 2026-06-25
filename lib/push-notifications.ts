@@ -140,13 +140,20 @@ async function sendMulticastBatched(
         }
       })
 
-      console.log('[Push] Firebase response', {
-        batchNumber,
-        batchTokenCount: batch.length,
-        successCount: response.successCount,
-        failureCount: response.failureCount,
-        failedTokens: failedTokensForBatch,
-      })
+console.log(
+  '[Push] Firebase response:',
+  JSON.stringify(
+    {
+      batchNumber,
+      batchTokenCount: batch.length,
+      successCount: response.successCount,
+      failureCount: response.failureCount,
+      failedTokens: failedTokensForBatch,
+    },
+    null,
+    2
+  )
+)
     } catch (error) {
       console.error('[Push] Error', {
         batchNumber,
