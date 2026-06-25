@@ -167,12 +167,13 @@ async function sendMulticastBatched(
   })
 
   // Deactivate all failed tokens in one query
-  if (allFailedTokens.length > 0) {
-    await db.deviceToken.updateMany({
-      where: { token: { in: allFailedTokens } },
-      data: { isActive: false },
-    })
-  }
+  // Disable this temporarily for debugging
+  // if (allFailedTokens.length > 0) {
+  //   await db.deviceToken.updateMany({
+  //     where: { token: { in: allFailedTokens } },
+  //     data: { isActive: false },
+  //   })
+  // }
 
   return { successCount: totalSuccess, failureCount: totalFailure, failedTokens: allFailedTokens }
 }
