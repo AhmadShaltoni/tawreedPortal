@@ -22,6 +22,11 @@ export default async function BrandDetailsPage({ params }: { params: Promise<{ i
     notFound()
   }
 
+  const brands = await db.brand.findMany({
+    select: { id: true, name: true },
+    orderBy: { sortOrder: 'asc' },
+  })
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -66,7 +71,7 @@ export default async function BrandDetailsPage({ params }: { params: Promise<{ i
       </div>
 
       {/* Product Manager */}
-      <BrandProductManager brandId={id} />
+      <BrandProductManager brandId={id} brands={brands} />
     </div>
   )
 }

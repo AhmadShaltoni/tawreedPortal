@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
     const excludeBrand = searchParams.get('excludeBrand') === 'true'
+    const onlyNoBrand = searchParams.get('onlyNoBrand') === 'true'
 
     const skip = (page - 1) * limit
 
@@ -42,6 +43,11 @@ export async function GET(req: NextRequest) {
       conditions.push({
         OR: [{ brandId: null }, { brandId: { not: brandId } }],
       })
+    }
+
+    // Only products with no brand assigned
+    if (onlyNoBrand) {
+      conditions.push({ brandId: null })
     }
 
     const prismaWhere = conditions.length > 0 ? { AND: conditions } : {}

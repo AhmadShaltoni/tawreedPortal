@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, X, Plus, Trash2, Loader2, ChevronLeft, ChevronRight, Check, Package, Filter } from 'lucide-react'
+import { Search, X, Plus, Trash2, Loader2, ChevronLeft, ChevronRight, Check, Package, Filter, ArrowRightLeft } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 
@@ -28,9 +28,14 @@ interface CategoryItem {
   nameEn?: string | null
 }
 
+interface BrandOption {
+  id: string
+  name: string
+}
+
 type Tab = 'current' | 'add'
 
-export function BrandProductManager({ brandId }: { brandId: string }) {
+export function BrandProductManager({ brandId, brands = [] }: { brandId: string; brands?: BrandOption[] }) {
   // Active tab
   const [activeTab, setActiveTab] = useState<Tab>('current')
 
@@ -56,6 +61,13 @@ export function BrandProductManager({ brandId }: { brandId: string }) {
 
   // Removing
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set())
+
+  // Bulk selection / move within current products
+  const [selectedCurrent, setSelectedCurrent] = useState<Set<string>>(new Set())
+  const [moveTargetBrand, setMoveTargetBrand] = useState('')
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false)
+
+  const otherBrands = brands.filter((b) => b.id !== brandId)
 
   // Load brand products
   const loadBrandProducts = useCallback(async () => {
@@ -222,6 +234,72 @@ export function BrandProductManager({ brandId }: { brandId: string }) {
     loadAllProducts(page)
   }
 
+  // --- Bulk selection within current brand products ---
+  function toggleCurrentSelection(productId: string) {
+    setSelectedCurrent((prev) => {
+      const next = new Set(prev)
+      if (next.has(productId)) next.delete(productId)
+      else next.add(productId)
+      return next
+    })
+  }
+
+  function toggleSelectAllCurrent() {
+    setSelectedCurrent((prev) => {
+      if (prev.size === brandProducts.length) return new Set()
+      return new Set(brandProducts.map((p) => p.id))
+    })
+  }
+
+  async function handleBulkRemove() {
+    if (selectedCurrent.size === 0) return
+    if (!window.confirm(`هل تريد إزالة ${selectedCurrent.size} منتج من الماركة؟`)) return
+
+    setIsBulkProcessing(true)
+    try {
+      const response = await fetch(`/api/admin/brands/${brandId}/products`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds: Array.from(selectedCurrent) }),
+      })
+      if (!response.ok) throw new Error('Failed to remove products')
+      const updatedProducts = await response.json()
+      setBrandProducts(updatedProducts)
+      setSelectedCurrent(new Set())
+    } catch (err) {
+      console.error('Error bulk removing products:', err)
+      alert('فشل في إزالة المنتجات')
+    } finally {
+      setIsBulkProcessing(false)
+    }
+  }
+
+  async function handleMoveProducts() {
+    if (selectedCurrent.size === 0 || !moveTargetBrand) return
+    const targetName = otherBrands.find((b) => b.id === moveTargetBrand)?.name || ''
+    if (!window.confirm(`نقل ${selectedCurrent.size} منتج إلى ماركة "${targetName}"؟`)) return
+
+    setIsBulkProcessing(true)
+    try {
+      const response = await fetch(`/api/admin/brands/${moveTargetBrand}/products`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds: Array.from(selectedCurrent) }),
+      })
+      if (!response.ok) throw new Error('Failed to move products')
+      // Remove moved products from current list locally
+      const movedIds = new Set(selectedCurrent)
+      setBrandProducts((prev) => prev.filter((p) => !movedIds.has(p.id)))
+      setSelectedCurrent(new Set())
+      setMoveTargetBrand('')
+    } catch (err) {
+      console.error('Error moving products:', err)
+      alert('فشل في نقل المنتجات')
+    } finally {
+      setIsBulkProcessing(false)
+    }
+  }
+
   const brandProductIds = new Set(brandProducts.map(p => p.id))
 
   return (
@@ -280,45 +358,127 @@ export function BrandProductManager({ brandId }: { brandId: string }) {
                 </Button>
               </div>
             ) : (
-              <div className="space-y-1">
-                {brandProducts.map((product) => (
-                  <div
-                    key={product.id}
-                    className="flex items-center justify-between p-3 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors group"
+              <div className="space-y-3">
+                {/* Select all + bulk action bar */}
+                <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                  <button
+                    onClick={toggleSelectAllCurrent}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                   >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      {product.image ? (
-                        <img
-                          src={product.image}
-                          alt={product.name}
-                          className="w-10 h-10 rounded-lg object-cover border border-gray-200"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                          <Package className="w-5 h-5 text-gray-400" />
-                        </div>
+                    {selectedCurrent.size === brandProducts.length ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
+                  </button>
+                  <p className="text-xs text-gray-500">{brandProducts.length} منتج</p>
+                </div>
+
+                {selectedCurrent.size > 0 && (
+                  <div className="sticky top-0 z-10 bg-blue-50 border border-blue-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+                    <span className="text-sm font-medium text-blue-800">
+                      تم تحديد {selectedCurrent.size} منتج
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {otherBrands.length > 0 && (
+                        <>
+                          <select
+                            value={moveTargetBrand}
+                            onChange={(e) => setMoveTargetBrand(e.target.value)}
+                            disabled={isBulkProcessing}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
+                          >
+                            <option value="">نقل إلى ماركة...</option>
+                            {otherBrands.map((b) => (
+                              <option key={b.id} value={b.id}>{b.name}</option>
+                            ))}
+                          </select>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleMoveProducts}
+                            disabled={isBulkProcessing || !moveTargetBrand}
+                          >
+                            {isBulkProcessing ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <ArrowRightLeft className="w-4 h-4" />
+                            )}
+                            نقل
+                          </Button>
+                        </>
                       )}
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-900 text-sm truncate">{product.name}</p>
-                        {product.nameEn && (
-                          <p className="text-xs text-gray-500 truncate">{product.nameEn}</p>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={handleBulkRemove}
+                        disabled={isBulkProcessing}
+                      >
+                        {isBulkProcessing ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
                         )}
-                      </div>
+                        إزالة من الماركة
+                      </Button>
                     </div>
-                    <button
-                      onClick={() => handleRemoveProduct(product.id)}
-                      disabled={removingIds.has(product.id)}
-                      className="p-2 hover:bg-red-50 rounded-lg text-red-500 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50"
-                      title="إزالة المنتج من الماركة"
-                    >
-                      {removingIds.has(product.id) ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </button>
                   </div>
-                ))}
+                )}
+
+                <div className="space-y-1">
+                  {brandProducts.map((product) => {
+                    const isSelected = selectedCurrent.has(product.id)
+                    return (
+                      <div
+                        key={product.id}
+                        className={`flex items-center justify-between p-3 border rounded-lg transition-colors group ${
+                          isSelected ? 'bg-blue-50 border-blue-200' : 'border-gray-100 hover:bg-gray-50'
+                        }`}
+                      >
+                        <label className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
+                          <div
+                            className={`w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ${
+                              isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
+                            }`}
+                          >
+                            {isSelected && <Check className="w-3 h-3 text-white" />}
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleCurrentSelection(product.id)}
+                            className="sr-only"
+                          />
+                          {product.image ? (
+                            <img
+                              src={product.image}
+                              alt={product.name}
+                              className="w-10 h-10 rounded-lg object-cover border border-gray-200"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+                              <Package className="w-5 h-5 text-gray-400" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-medium text-gray-900 text-sm truncate">{product.name}</p>
+                            {product.nameEn && (
+                              <p className="text-xs text-gray-500 truncate">{product.nameEn}</p>
+                            )}
+                          </div>
+                        </label>
+                        <button
+                          onClick={() => handleRemoveProduct(product.id)}
+                          disabled={removingIds.has(product.id)}
+                          className="p-2 hover:bg-red-50 rounded-lg text-red-500 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                          title="إزالة المنتج من الماركة"
+                        >
+                          {removingIds.has(product.id) ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )}
           </CardContent>
