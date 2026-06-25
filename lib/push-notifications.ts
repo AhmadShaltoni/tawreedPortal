@@ -89,6 +89,35 @@ async function sendMulticastBatched(
           ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
         },
         data: payload.data || {},
+        // iOS (APNs) — required for reliable delivery, sound, badge and images.
+        // Without an explicit aps payload, iOS often shows nothing even when FCM reports success.
+        apns: {
+          headers: {
+            'apns-priority': '10',
+            'apns-push-type': 'alert',
+          },
+          payload: {
+            aps: {
+              alert: {
+                title: payload.title,
+                body: payload.body,
+              },
+              sound: 'default',
+              badge: 1,
+              // Required so the app can download/show the image attachment
+              ...(payload.imageUrl ? { 'mutable-content': 1 } : {}),
+            },
+          },
+          ...(payload.imageUrl ? { fcmOptions: { imageUrl: payload.imageUrl } } : {}),
+        },
+        // Android — high priority so it wakes the device
+        android: {
+          priority: 'high',
+          notification: {
+            sound: 'default',
+            ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
+          },
+        },
         tokens: batch,
       })
 

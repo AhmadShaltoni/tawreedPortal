@@ -26,10 +26,27 @@ export async function POST(request: NextRequest) {
 
     const validated = schema.safeParse(body)
     if (!validated.success) {
+      console.warn('[DeviceToken] Invalid registration payload', {
+        receivedKeys: Object.keys(body ?? {}),
+        platform: (body as { platform?: unknown })?.platform,
+        hasToken: Boolean((body as { token?: unknown })?.token),
+        errors: validated.error.flatten().fieldErrors,
+      })
       return apiError('Invalid request data', 400)
     }
 
     const { token, platform } = validated.data
+
+    const maskedToken =
+      token.length <= 12 ? `${token.slice(0, 3)}...${token.slice(-3)}` : `${token.slice(0, 6)}...${token.slice(-6)}`
+
+    console.log('[DeviceToken] Registering device', {
+      platform,
+      token: maskedToken,
+      tokenLength: token.length,
+      authenticated: Boolean(user),
+      userId: user?.id ?? null,
+    })
 
     if (user) {
       // Authenticated: link token to this user
@@ -47,6 +64,13 @@ export async function POST(request: NextRequest) {
           userId: user.id,
           isActive: true,
         },
+      })
+
+      console.log('[DeviceToken] Linked to user', {
+        id: deviceToken.id,
+        platform: deviceToken.platform,
+        isActive: deviceToken.isActive,
+        userId: deviceToken.userId,
       })
 
       return apiResponse(
@@ -76,6 +100,13 @@ export async function POST(request: NextRequest) {
           // userId is null — anonymous device
           isActive: true,
         },
+      })
+
+      console.log('[DeviceToken] Registered anonymous device', {
+        id: deviceToken.id,
+        platform: deviceToken.platform,
+        isActive: deviceToken.isActive,
+        linked: Boolean(deviceToken.userId),
       })
 
       return apiResponse(
