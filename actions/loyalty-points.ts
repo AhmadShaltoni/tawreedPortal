@@ -3,6 +3,7 @@
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { createAndSendNotification } from '@/lib/push-notifications'
+import { hashPhone } from '@/lib/account/phone-hash'
 import type { ActionResponse } from '@/types'
 
 /**
@@ -181,6 +182,22 @@ export async function awardWelcomeBonus(userId: string, trigger: 'SIGNUP' | 'FIR
     if (existingBonus) {
       return { success: false, error: 'Welcome bonus already received' }
     }
+
+    // Block re-claim by a previously deleted account with the same phone
+    const bonusUser = await db.user.findUnique({
+      where: { id: userId },
+      select: { phone: true },
+    })
+    const bonusPhoneHash = bonusUser ? hashPhone(bonusUser.phone) : null
+    if (bonusPhoneHash) {
+      const deletedRecord = await db.deletedAccountRecord.findUnique({
+        where: { phoneNumberHash: bonusPhoneHash },
+        select: { welcomeBonusReceived: true },
+      })
+      if (deletedRecord?.welcomeBonusReceived) {
+        return { success: false, error: 'Welcome bonus already received' }
+      }
+    }
     
     // Award points
     const balance = await db.loyaltyBalance.upsert({
@@ -257,8 +274,24 @@ export async function processReferralRewards(inviteeUserId: string, trigger: 'SI
       return { success: true, message: 'User not referred by anyone' }
     }
     
+    // Block re-claim of the invitee reward by a previously deleted account
+    // with the same phone number.
+    const inviteeUser = await db.user.findUnique({
+      where: { id: inviteeUserId },
+      select: { phone: true },
+    })
+    const inviteePhoneHash = inviteeUser ? hashPhone(inviteeUser.phone) : null
+    let inviteeRewardBlocked = false
+    if (inviteePhoneHash) {
+      const deletedRecord = await db.deletedAccountRecord.findUnique({
+        where: { phoneNumberHash: inviteePhoneHash },
+        select: { referralInviteeUsed: true },
+      })
+      inviteeRewardBlocked = Boolean(deletedRecord?.referralInviteeUsed)
+    }
+    
     // Award invitee points (if not already claimed)
-    if (!referral.referralRewardClaimed) {
+    if (!referral.referralRewardClaimed && !inviteeRewardBlocked) {
       const inviteeBalance = await db.loyaltyBalance.upsert({
         where: { userId: inviteeUserId },
         update: {

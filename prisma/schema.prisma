@@ -904,6 +904,38 @@ model DiscountCodeUsage {
 }
 
 // ============================================
+// ACCOUNT DELETION (PRIVACY + ABUSE PREVENTION)
+// ============================================
+
+// Preserves single-use coupon usage by deleted users so the coupon cannot be
+// reused after deleting and re-registering with the same phone number.
+// No personal data is stored — only a salted hash of the normalized phone.
+model DeletedUserCouponUsage {
+  id              String    @id @default(cuid())
+  
+  phoneNumberHash String              // HMAC-SHA256 of normalized phone (E.164)
+  discountCodeId  String              // The single-use code that was consumed
+  usedAt          DateTime  @default(now())
+  
+  @@unique([phoneNumberHash, discountCodeId])
+  @@index([phoneNumberHash])
+}
+
+// Tracks non-personal flags for deleted accounts so one-time grants
+// (welcome bonus, referral invitee reward) cannot be re-claimed after
+// deleting and re-registering with the same phone number.
+model DeletedAccountRecord {
+  id                   String    @id @default(cuid())
+  
+  phoneNumberHash      String    @unique  // HMAC-SHA256 of normalized phone (E.164)
+  welcomeBonusReceived Boolean   @default(false)
+  referralInviteeUsed  Boolean   @default(false)
+  deletedAt            DateTime  @default(now())
+  
+  @@index([phoneNumberHash])
+}
+
+// ============================================
 // LOYALTY & REWARDS SYSTEM
 // ============================================
 

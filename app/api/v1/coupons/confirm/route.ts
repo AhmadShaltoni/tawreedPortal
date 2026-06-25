@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
+import { hashPhone } from '@/lib/account/phone-hash'
 
 export async function OPTIONS() {
   return corsOptions()
@@ -68,6 +69,22 @@ export async function POST(request: NextRequest) {
       })
       if (existingUsage) {
         return apiError('لقد استخدمت هذا الكود من قبل', 400)
+      }
+
+      // Also block reuse by a previously deleted account with the same phone
+      const phoneHash = hashPhone(user.phone)
+      if (phoneHash) {
+        const deletedUsage = await db.deletedUserCouponUsage.findUnique({
+          where: {
+            phoneNumberHash_discountCodeId: {
+              phoneNumberHash: phoneHash,
+              discountCodeId: discountCode.id,
+            },
+          },
+        })
+        if (deletedUsage) {
+          return apiError('لقد قمت باستخدام هذا الكوبون مسبقاً.', 400)
+        }
       }
     }
 
