@@ -13,6 +13,7 @@ import { createProduct } from '@/actions/products'
 import { useAutoTranslate } from '@/lib/useAutoTranslate'
 import { getTagsByCategory } from '@/actions/tags'
 import { compressImage } from '@/lib/compress-image'
+import { ImageLightbox } from '@/components/ui/ImageLightbox'
 
 interface CategoryNode {
   id: string
@@ -137,6 +138,7 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>(defaultSupplierId || '')
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<string[]>([])
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
+  const [lightbox, setLightbox] = useState<{ src: string; name: string } | null>(null)
   const [availableTags, setAvailableTags] = useState<TagOption[]>([])
   
   // Variants
@@ -631,7 +633,14 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
                     />
                     {variant.imagePreview && (
                       <div className="relative">
-                        <img src={variant.imagePreview} alt="" className="w-12 h-12 object-cover rounded-lg border" />
+                        <button
+                          type="button"
+                          title="عرض الصورة"
+                          onClick={() => setLightbox({ src: variant.imagePreview!, name: `صورة-${variant.size || `الحجم-${vi + 1}`}` })}
+                          className="block cursor-zoom-in"
+                        >
+                          <img src={variant.imagePreview} alt="" className="w-12 h-12 object-cover rounded-lg border hover:opacity-80 transition-opacity" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -734,7 +743,14 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
                                 className="w-full text-xs file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                               />
                               {option.imagePreview && (
-                                <img src={option.imagePreview} alt="" className="w-10 h-10 object-cover rounded border" />
+                                <button
+                                  type="button"
+                                  title="عرض الصورة"
+                                  onClick={() => setLightbox({ src: option.imagePreview!, name: `صورة-${option.name || `النكهة-${oi + 1}`}` })}
+                                  className="block cursor-zoom-in"
+                                >
+                                  <img src={option.imagePreview} alt="" className="w-10 h-10 object-cover rounded border hover:opacity-80 transition-opacity" />
+                                </button>
                               )}
                             </div>
                           </div>
@@ -818,6 +834,8 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
           <Link href="/admin/products"><Button type="button" variant="outline">{t.common.cancel}</Button></Link>
         </div>
       </form>
+
+      {lightbox && <ImageLightbox src={lightbox.src} filename={lightbox.name} onClose={() => setLightbox(null)} />}
     </div>
   )
 }

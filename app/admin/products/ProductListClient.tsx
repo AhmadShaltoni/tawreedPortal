@@ -99,6 +99,15 @@ export function ProductListClient({
   const [movingToCategory, setMovingToCategory] = useState(false)
   const dragCounter = useRef<Record<string, number>>({})
 
+  // Preserve current list state (page/filters) so edit pages can return here
+  const listParams = new URLSearchParams()
+  if (currentPage > 1) listParams.set('page', String(currentPage))
+  if (currentCategory) listParams.set('category', currentCategory)
+  if (currentSearch) listParams.set('search', currentSearch)
+  if (currentSupplier) listParams.set('supplier', currentSupplier)
+  const listQuery = listParams.toString()
+  const editHref = (id: string) => `/admin/products/${id}${listQuery ? `?${listQuery}` : ''}`
+
   // Sync when products prop changes (e.g. after server refresh)
   if (products !== orderedProducts && !draggedId) {
     const productIds = products.map(p => p.id).join(',')
@@ -550,7 +559,7 @@ export function ProductListClient({
                           </div>
                         </td>
                         <td className="py-3">
-                          <Link href={`/admin/products/${product.id}`} className="text-blue-600 hover:underline font-medium">
+                          <Link href={editHref(product.id)} className="text-blue-600 hover:underline font-medium">
                             {lang === 'ar' ? product.name : (product.nameEn || product.name)}
                           </Link>
                         </td>
@@ -596,7 +605,7 @@ export function ProductListClient({
                         </td>
                         <td className="py-3">
                           <div className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
-                            <Link href={`/admin/products/${product.id}`}>
+                            <Link href={editHref(product.id)}>
                               <Button variant="ghost" size="sm">{t.common.edit}</Button>
                             </Link>
                             <Button
@@ -630,7 +639,7 @@ export function ProductListClient({
                   {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
                     <Link
                       key={p}
-                      href={`/admin/products?page=${p}${currentCategory ? `&category=${currentCategory}` : ''}${currentSearch ? `&search=${currentSearch}` : ''}`}
+                      href={`/admin/products?page=${p}${currentCategory ? `&category=${currentCategory}` : ''}${currentSearch ? `&search=${encodeURIComponent(currentSearch)}` : ''}${currentSupplier ? `&supplier=${currentSupplier}` : ''}`}
                       className={`px-3 py-1 rounded ${p === currentPage ? 'bg-blue-900 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
                     >
                       {p}

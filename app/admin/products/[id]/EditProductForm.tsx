@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { ArrowRight, Trash2, Plus, X, Languages, Loader2 } from 'lucide-react'
@@ -13,6 +13,7 @@ import { useLanguage } from '@/lib/LanguageContext'
 import { updateProduct, deleteProduct } from '@/actions/products'
 import { useAutoTranslate } from '@/lib/useAutoTranslate'
 import { compressImage } from '@/lib/compress-image'
+import { ImageLightbox } from '@/components/ui/ImageLightbox'
 
 interface UnitEntry {
   unit: string
@@ -205,6 +206,9 @@ function buildInitialVariants(product: Props['product']): VariantEntry[] {
 export function EditProductForm({ product, categoryTree, suppliers, brands }: Props) {
   const { t, dir, lang } = useLanguage()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  // Return to the same list page/filters the user came from
+  const listUrl = `/admin/products${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -213,6 +217,7 @@ export function EditProductForm({ product, categoryTree, suppliers, brands }: Pr
   const [selectedBrandId, setSelectedBrandId] = useState<string>(product.brandId || '')
   const [mainImagePreview, setMainImagePreview] = useState<string | null>(null)
   const [mainImageFile, setMainImageFile] = useState<File | null>(null)
+  const [lightbox, setLightbox] = useState<{ src: string; name: string } | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   const nameEnRef = useRef<HTMLInputElement>(null)
@@ -439,7 +444,7 @@ export function EditProductForm({ product, categoryTree, suppliers, brands }: Pr
       const result = await updateProduct(product.id, formData)
 
       if (result.success) {
-        router.push('/admin/products')
+        router.push(listUrl)
       } else {
         setError(result.error || null)
         setFieldErrors(result.errors || {})
@@ -456,7 +461,7 @@ export function EditProductForm({ product, categoryTree, suppliers, brands }: Pr
     setIsDeleting(true)
     const result = await deleteProduct(product.id)
     if (result.success) {
-      router.push('/admin/products')
+      router.push(listUrl)
     } else {
       setError(result.error || null)
       setIsDeleting(false)
@@ -467,7 +472,7 @@ export function EditProductForm({ product, categoryTree, suppliers, brands }: Pr
     <div className="max-w-2xl mx-auto space-y-6">
       <div className={`flex items-center justify-between ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
         <div className={`flex items-center gap-4 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
-          <Link href="/admin/products" className="text-gray-500 hover:text-gray-700">
+          <Link href={listUrl} className="text-gray-500 hover:text-gray-700">
             <ArrowRight className={`w-5 h-5 ${dir === 'rtl' ? '' : 'rotate-180'}`} />
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">{t.productManagement.editProduct}</h1>
@@ -670,7 +675,14 @@ export function EditProductForm({ product, categoryTree, suppliers, brands }: Pr
                     />
                     {(variant.imagePreview || variant.existingImage) && (
                       <div className="relative">
-                        <img src={variant.imagePreview || variant.existingImage || ''} alt="" className="w-12 h-12 object-cover rounded-lg border" />
+                        <button
+                          type="button"
+                          title="عرض الصورة"
+                          onClick={() => setLightbox({ src: variant.imagePreview || variant.existingImage || '', name: `صورة-${variant.size || `الحجم-${vi + 1}`}` })}
+                          className="block cursor-zoom-in"
+                        >
+                          <img src={variant.imagePreview || variant.existingImage || ''} alt="" className="w-12 h-12 object-cover rounded-lg border hover:opacity-80 transition-opacity" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -776,7 +788,14 @@ export function EditProductForm({ product, categoryTree, suppliers, brands }: Pr
                               />
                               {(option.imagePreview || option.existingImage) && (
                                 <div className="relative">
-                                  <img src={option.imagePreview || option.existingImage || ''} alt="" className="w-10 h-10 object-cover rounded border" />
+                                  <button
+                                    type="button"
+                                    title="عرض الصورة"
+                                    onClick={() => setLightbox({ src: option.imagePreview || option.existingImage || '', name: `صورة-${option.name || `النكهة-${oi + 1}`}` })}
+                                    className="block cursor-zoom-in"
+                                  >
+                                    <img src={option.imagePreview || option.existingImage || ''} alt="" className="w-10 h-10 object-cover rounded border hover:opacity-80 transition-opacity" />
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -870,9 +889,11 @@ export function EditProductForm({ product, categoryTree, suppliers, brands }: Pr
 
         <div className={`flex items-center gap-4 mt-6 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
           <Button type="submit" variant="primary" isLoading={isSubmitting}>{t.common.save}</Button>
-          <Link href="/admin/products"><Button type="button" variant="outline">{t.common.cancel}</Button></Link>
+          <Link href={listUrl}><Button type="button" variant="outline">{t.common.cancel}</Button></Link>
         </div>
       </form>
+
+      {lightbox && <ImageLightbox src={lightbox.src} filename={lightbox.name} onClose={() => setLightbox(null)} />}
     </div>
   )
 }
