@@ -899,6 +899,7 @@ export function MyComponent() {
 | **Deployment Success** | **Project fully operational with database, admin access, and complete marketplace functionality** |
 | **Currency Runtime Fix** | **Fixed JOD currency format error (JD→JOD) and locale (en-SA→ar-JO) - All marketplace features now operational** |
 | **Loyalty & Rewards System** | **Complete loyalty program with points, referrals, rewards, campaigns - 85% complete (core system + mobile API operational)** |
+| **Loyalty v2 (2026-07-13)** | Points now award on ORDER_PLACED (configurable via `LoyaltyConfig.earnTrigger`, reversed on cancel) with Firebase thank-you push. New `FREE_PRODUCT` reward type (`LoyaltyReward.productId`), prize order items (`OrderItem.isReward`, price 0). Loyalty coupons (discount/free delivery/free product) now applied at order creation via `loyaltyCouponCode`. Mobile API DTOs normalized in `lib/loyalty-dto.ts`. Admin config + rewards pages rebuilt (`/admin/loyalty/config`, `/admin/loyalty/rewards`). Migration: `20260713100000_loyalty_rewards_v2` (additive only) |
 | Loyalty Implementation | Added 11 new database models, 6 server action files, 9 mobile API endpoints, complete documentation. System awards points on delivered orders, includes welcome bonus, referral program, reward redemption with coupons, progress-based campaigns, and full analytics |
 
 ---

@@ -6,6 +6,9 @@ import { createAndSendNotification } from '@/lib/push-notifications'
 import type { ActionResponse } from '@/types'
 import { revalidatePath } from 'next/cache'
 
+/** Thrown inside the redemption transaction to roll back with a user-facing message. */
+class RedeemError extends Error {}
+
 /**
  * Get rewards catalog with optional filters
  */
@@ -233,85 +236,94 @@ export async function redeemReward(rewardId: string): Promise<ActionResponse<{ c
       return { success: false, error: 'منتج الجائزة غير متوفر حالياً' }
     }
 
-    // Get user balance
-    const balance = await db.loyaltyBalance.findUnique({
-      where: { userId: user.id },
-    })
-
-    if (!balance || balance.currentBalance < reward.pointsCost) {
-      return { success: false, error: 'رصيد نقاط غير كافي' }
-    }
-
-    // Check redemption limit
-    if (reward.usageLimit) {
-      const redemptionCount = await db.redeemedReward.count({
-        where: {
-          userId: user.id,
-          rewardId: reward.id,
-        },
-      })
-
-      if (redemptionCount >= reward.usageLimit) {
-        return { success: false, error: 'لقد وصلت إلى الحد الأقصى لاسترداد هذه المكافأة' }
-      }
-    }
-
     // Generate unique coupon code
     const couponCode = `LOYALTY-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
     const expiresAt = new Date()
     expiresAt.setDate(expiresAt.getDate() + reward.expirationDays)
 
-    // Create redeemed reward
-    await db.redeemedReward.create({
-      data: {
-        userId: user.id,
-        rewardId: reward.id,
-        couponCode,
-        expiresAt,
-        discountValue: reward.discountValue,
-        rewardType: reward.rewardType,
-        minOrderValue: reward.minOrderValue,
-        maxDiscountCap: reward.maxDiscountCap,
-        // Snapshot free product data at redemption time
-        productId: reward.product?.id ?? null,
-        productName: reward.product?.name ?? null,
-        productNameEn: reward.product?.nameEn ?? null,
-        productImage: reward.imageUrl ?? reward.product?.image ?? null,
-      },
-    })
+    // Everything below runs atomically so points can never go negative and a
+    // coupon can never be issued without the points being deducted (and vice-versa).
+    try {
+      await db.$transaction(async (tx) => {
+        // 1) Enforce per-user usage limit inside the transaction
+        if (reward.usageLimit) {
+          const redemptionCount = await tx.redeemedReward.count({
+            where: { userId: user.id, rewardId: reward.id },
+          })
+          if (redemptionCount >= reward.usageLimit) {
+            throw new RedeemError('لقد وصلت إلى الحد الأقصى لاسترداد هذه المكافأة')
+          }
+        }
 
-    // Deduct points
-    await db.loyaltyBalance.update({
-      where: { userId: user.id },
-      data: {
-        currentBalance: { decrement: reward.pointsCost },
-        totalRedeemed: { increment: reward.pointsCost },
-      },
-    })
+        // 2) Atomically deduct points — only succeeds if the balance is still
+        //    sufficient, which blocks double-spend from concurrent requests.
+        const deducted = await tx.loyaltyBalance.updateMany({
+          where: { userId: user.id, currentBalance: { gte: reward.pointsCost } },
+          data: {
+            currentBalance: { decrement: reward.pointsCost },
+            totalRedeemed: { increment: reward.pointsCost },
+          },
+        })
+        if (deducted.count !== 1) {
+          throw new RedeemError('رصيد نقاط غير كافي')
+        }
 
-    // Create transaction
-    await db.loyaltyTransaction.create({
-      data: {
-        userId: user.id,
-        type: 'REDEEM',
-        points: -reward.pointsCost,
-        description: `استرداد مكافأة: ${reward.name}`,
-        descriptionEn: `Redeemed reward: ${reward.nameEn || reward.name}`,
-        metadata: {
-          rewardId: reward.id,
-          couponCode,
-        },
-      },
-    })
+        // 3) Issue the coupon
+        await tx.redeemedReward.create({
+          data: {
+            userId: user.id,
+            rewardId: reward.id,
+            couponCode,
+            expiresAt,
+            discountValue: reward.discountValue,
+            rewardType: reward.rewardType,
+            minOrderValue: reward.minOrderValue,
+            maxDiscountCap: reward.maxDiscountCap,
+            // Snapshot free product data at redemption time
+            productId: reward.product?.id ?? null,
+            productName: reward.product?.name ?? null,
+            productNameEn: reward.product?.nameEn ?? null,
+            productImage: reward.imageUrl ?? reward.product?.image ?? null,
+          },
+        })
 
-    // Send notification
+        // 4) Immutable transaction record (negative points)
+        await tx.loyaltyTransaction.create({
+          data: {
+            userId: user.id,
+            type: 'REDEEM',
+            points: -reward.pointsCost,
+            description: `استرداد مكافأة: ${reward.name}`,
+            descriptionEn: `Redeemed reward: ${reward.nameEn || reward.name}`,
+            referenceId: reward.id,
+            referenceType: 'REWARD',
+            metadata: { rewardId: reward.id, couponCode },
+          },
+        })
+
+        // 5) Bump the reward's global redemption counter
+        await tx.loyaltyReward.update({
+          where: { id: reward.id },
+          data: { totalRedeemed: { increment: 1 } },
+        })
+      })
+    } catch (txErr) {
+      if (txErr instanceof RedeemError) {
+        return { success: false, error: txErr.message }
+      }
+      throw txErr
+    }
+
+    // Send notification (outside the transaction)
     await createAndSendNotification(user.id, {
       type: 'LOYALTY_REWARD_REDEEMED',
-      title: 'تم استرداد المكافأة',
-      message: `تم استرداد ${reward.name} بنجاح. رمز الكوبون: ${couponCode}`,
+      title: 'تم استبدال المكافأة 🎉',
+      message: `تم استبدال "${reward.name}" مقابل ${reward.pointsCost} نقطة. رمز الكوبون: ${couponCode}`,
+      linkUrl: '/loyalty',
       data: {
         rewardId: reward.id,
         couponCode,
+        pointsSpent: reward.pointsCost.toString(),
       },
     })
 
