@@ -5,7 +5,8 @@ import { createOrderFromCartSchema } from '@/lib/validations'
 import { sendPushToRole } from '@/lib/push-notifications'
 import { calculateDeliveryFee } from '@/actions/delivery'
 import { calcProductDiscounts, applyDiscount } from '@/lib/discount-engine'
-import type { DiscountCode } from '@prisma/client'
+import { awardOrderPoints } from '@/actions/loyalty-points'
+import type { DiscountCode, RedeemedReward } from '@prisma/client'
 
 class OrderValidationError extends Error {
   status: number
@@ -80,6 +81,7 @@ export async function GET(request: NextRequest) {
         },
         quantity: item.quantity,
         note: item.note || null,
+        isReward: item.isReward,
       }))
       return {
         ...order,
@@ -223,12 +225,55 @@ export async function POST(request: NextRequest) {
     finalPrice = Math.round((totalPrice - discountAmount) * 100) / 100
   }
 
+  // Validate loyalty reward coupon (redeemed reward) if provided
+  let loyaltyCoupon: RedeemedReward | null = null
+  let loyaltyDiscountAmount = 0
+
+  if (validated.data.loyaltyCouponCode) {
+    const loyaltyCode = validated.data.loyaltyCouponCode.trim().toUpperCase()
+
+    loyaltyCoupon = await db.redeemedReward.findUnique({
+      where: { couponCode: loyaltyCode },
+    })
+
+    if (!loyaltyCoupon) {
+      return apiError('كوبون المكافأة غير موجود', 400)
+    }
+    if (loyaltyCoupon.userId !== user.id) {
+      return apiError('هذا الكوبون لا ينتمي إليك', 400)
+    }
+    if (loyaltyCoupon.isUsed || loyaltyCoupon.usedAt) {
+      return apiError('تم استخدام هذا الكوبون بالفعل', 400)
+    }
+    if (new Date() > loyaltyCoupon.expiresAt) {
+      return apiError('انتهت صلاحية هذا الكوبون', 400)
+    }
+    if (loyaltyCoupon.minOrderValue && totalPrice < loyaltyCoupon.minOrderValue) {
+      return apiError(`الحد الأدنى لمبلغ الطلب لاستخدام المكافأة هو ${loyaltyCoupon.minOrderValue} د.أ`, 400)
+    }
+
+    // Apply discount-type rewards on the running total (after discount code, if any)
+    if (loyaltyCoupon.rewardType === 'FIXED_DISCOUNT') {
+      loyaltyDiscountAmount = loyaltyCoupon.discountValue || 0
+    } else if (loyaltyCoupon.rewardType === 'PERCENTAGE_DISCOUNT') {
+      loyaltyDiscountAmount = (finalPrice * (loyaltyCoupon.discountValue || 0)) / 100
+      if (loyaltyCoupon.maxDiscountCap && loyaltyDiscountAmount > loyaltyCoupon.maxDiscountCap) {
+        loyaltyDiscountAmount = loyaltyCoupon.maxDiscountCap
+      }
+    }
+    // FREE_DELIVERY handled below (deliveryFee = 0), FREE_PRODUCT adds a prize item at 0
+
+    loyaltyDiscountAmount = Math.min(Math.round(loyaltyDiscountAmount * 100) / 100, finalPrice)
+    finalPrice = Math.round((finalPrice - loyaltyDiscountAmount) * 100) / 100
+  }
+
   // Calculate delivery fee if cityId provided
   let deliveryFee = 0
   let deliveryPromotionId: string | null = null
   const deliveryCityId = validated.data.deliveryCityId || null
+  const freeDeliveryReward = loyaltyCoupon?.rewardType === 'FREE_DELIVERY'
 
-  if (deliveryCityId) {
+  if (deliveryCityId && !freeDeliveryReward) {
     const deliveryResult = await calculateDeliveryFee(deliveryCityId, finalPrice)
     if (deliveryResult.error) {
       return apiError(deliveryResult.error, 400)
@@ -308,11 +353,41 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Atomically consume the loyalty coupon (guards against double-use races)
+      if (loyaltyCoupon) {
+        const consumed = await tx.redeemedReward.updateMany({
+          where: { id: loyaltyCoupon.id, isUsed: false, usedAt: null },
+          data: { isUsed: true, usedAt: new Date() },
+        })
+        if (consumed.count !== 1) {
+          throw new OrderValidationError('تم استخدام هذا الكوبون بالفعل')
+        }
+      }
+
+      // Prize item from FREE_PRODUCT reward (value 0)
+      const prizeItems = loyaltyCoupon?.rewardType === 'FREE_PRODUCT'
+        ? [{
+            productId: loyaltyCoupon.productId,
+            productName: loyaltyCoupon.productName ?? 'جائزة مكافآت توريد',
+            productNameEn: loyaltyCoupon.productNameEn ?? 'Tawreed rewards prize',
+            productImage: loyaltyCoupon.productImage,
+            quantity: 1,
+            unit: 'PIECE',
+            pricePerUnit: 0,
+            totalPrice: 0,
+            piecesPerUnit: 1,
+            unitLabel: 'جائزة 🎁',
+            unitLabelEn: 'Prize 🎁',
+            isReward: true,
+          }]
+        : []
+
       // Create order
       const newOrder = await tx.order.create({
         data: {
           totalPrice: finalPrice,
           deliveryFee,
+          redeemedRewardId: loyaltyCoupon?.id ?? null,
           deliveryAddress: validated.data.deliveryAddress,
           deliveryAddressDetails: normalizedAddressDetails,
           deliveryCity: validated.data.deliveryCity,
@@ -326,7 +401,7 @@ export async function POST(request: NextRequest) {
             { status: 'PENDING', timestamp: new Date().toISOString(), note: null },
           ],
           items: {
-            create: cartItems.map((item) => {
+            create: [...prizeItems, ...cartItems.map((item) => {
               const originalUnitPrice = item.variantOption?.priceOverride ?? item.productUnit?.price ?? 0
               const campaignDiscount = campaignDiscountMap.get(item.variant.product.id) || 0
               const effectivePrice = campaignDiscount > 0 ? applyDiscount(originalUnitPrice, campaignDiscount) : originalUnitPrice
@@ -354,11 +429,19 @@ export async function POST(request: NextRequest) {
                 unitLabelEn,
                 note: itemNotesMap.get(item.id) || null,
               }
-            }),
+            })],
           },
         },
         include: { items: true },
       })
+
+      // Link the consumed coupon to this order
+      if (loyaltyCoupon) {
+        await tx.redeemedReward.update({
+          where: { id: loyaltyCoupon.id },
+          data: { orderId: newOrder.id },
+        })
+      }
 
       // Clear cart
       await tx.cartItem.deleteMany({ where: { buyerId: user.id } })
@@ -399,6 +482,18 @@ export async function POST(request: NextRequest) {
     throw err
   }
 
+  // Award loyalty points + send "thank you" push to the buyer (outside transaction).
+  // No-op when the loyalty system is disabled or configured to award on delivery.
+  let loyaltyPointsEarned: number | null = null
+  try {
+    const pointsResult = await awardOrderPoints(order.id, 'ORDER_PLACED')
+    if (pointsResult.success && pointsResult.data?.points) {
+      loyaltyPointsEarned = pointsResult.data.points
+    }
+  } catch (err) {
+    console.error('Failed to award loyalty points on order placement:', err)
+  }
+
   // Send push notification to admins (outside transaction)
   sendPushToRole('ADMIN', {
     title: 'طلب جديد',
@@ -414,6 +509,7 @@ export async function POST(request: NextRequest) {
   return apiResponse({
     order,
     deliveryFee,
+    loyaltyPointsEarned,
     ...(discountCode ? {
       coupon: {
         code: discountCode.code,
@@ -421,6 +517,14 @@ export async function POST(request: NextRequest) {
         discountAmount,
         originalTotal: totalPrice,
         finalTotal: finalPrice,
+      },
+    } : {}),
+    ...(loyaltyCoupon ? {
+      loyaltyReward: {
+        code: loyaltyCoupon.couponCode,
+        rewardType: loyaltyCoupon.rewardType,
+        discountAmount: loyaltyDiscountAmount,
+        freeDelivery: freeDeliveryReward,
       },
     } : {}),
   }, 201)

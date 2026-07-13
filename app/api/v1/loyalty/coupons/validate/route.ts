@@ -31,6 +31,11 @@ export async function POST(request: NextRequest) {
       discountAmount: result.data?.discountAmount,
       finalTotal: result.data?.finalTotal,
       couponId: result.data?.couponId,
+      rewardType: result.data?.rewardType,
+      rewardName: result.data?.rewardName,
+      rewardNameEn: result.data?.rewardNameEn,
+      freeDelivery: result.data?.freeDelivery ?? false,
+      freeProduct: result.data?.freeProduct ?? null,
     })
   } catch (err) {
     console.error('[API] /api/v1/loyalty/coupons/validate error:', err)

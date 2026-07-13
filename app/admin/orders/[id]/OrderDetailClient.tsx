@@ -26,6 +26,14 @@ interface Props {
     buyerNotes: string | null
     adminNotes: string | null
     createdAt: Date
+    deliveryFee?: number
+    loyaltyPointsEarned?: number | null
+    redeemedReward?: {
+      couponCode: string
+      rewardType: string
+      discountValue: number
+      reward: { id: string; name: string; nameEn: string | null }
+    } | null
     buyer: {
       id: string
       username: string
@@ -53,9 +61,18 @@ interface Props {
       originalPricePerUnit: number | null
       discountPercent: number | null
       note: string | null
-      product: { id: string; name: string; image: string | null }
+      isReward?: boolean
+      product: { id: string; name: string; image: string | null } | null
     }>
   }
+}
+
+const REWARD_TYPE_LABELS: Record<string, string> = {
+  FIXED_DISCOUNT: 'خصم ثابت',
+  PERCENTAGE_DISCOUNT: 'خصم نسبة',
+  FREE_DELIVERY: 'توصيل مجاني',
+  FREE_PRODUCT: 'منتج مجاني',
+  CUSTOM: 'مكافأة خاصة',
 }
 
 export function OrderDetailClient({ order }: Props) {
@@ -115,17 +132,22 @@ export function OrderDetailClient({ order }: Props) {
               <div className="space-y-4">
                 {order.items.map((item) => (
                   <div key={item.id}>
-                    <div className={`flex items-center gap-4 p-3 bg-gray-50 rounded-lg ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex items-center gap-4 p-3 rounded-lg ${item.isReward ? 'bg-orange-50 border border-orange-200' : 'bg-gray-50'} ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
                     <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
-                      {item.productImage || item.product.image ? (
-                        <Image src={item.productImage || item.product.image || ''} alt={item.productName} width={64} height={64} className="object-cover w-full h-full" />
+                      {item.productImage || item.product?.image ? (
+                        <Image src={item.productImage || item.product?.image || ''} alt={item.productName} width={64} height={64} className="object-cover w-full h-full" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-400 text-lg">📦</div>
+                        <div className="w-full h-full flex items-center justify-center text-gray-400 text-lg">{item.isReward ? '🎁' : '📦'}</div>
                       )}
                     </div>
                     <div className="flex-1">
-                      <p className="font-medium text-gray-900">
+                      <p className="font-medium text-gray-900 flex items-center gap-2 flex-wrap">
                         {lang === 'ar' ? item.productName : (item.productNameEn || item.productName)}
+                        {item.isReward && (
+                          <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 text-xs font-bold px-2.5 py-0.5 rounded-full">
+                            🎁 {lang === 'ar' ? 'جائزة مكافآت' : 'Loyalty prize'}
+                          </span>
+                        )}
                       </p>
                       <div className="text-sm text-gray-600 space-y-0.5">
                         {item.variantSize && (
@@ -153,7 +175,9 @@ export function OrderDetailClient({ order }: Props) {
                       </div>
                     </div>
                     <div className="text-left">
-                      {item.originalPricePerUnit && item.discountPercent ? (
+                      {item.isReward ? (
+                        <p className="font-bold text-orange-600">{lang === 'ar' ? 'مجاناً' : 'FREE'} · {formatCurrency(0)}</p>
+                      ) : item.originalPricePerUnit && item.discountPercent ? (
                         <>
                           <p className="line-through text-sm text-gray-400">{formatCurrency(item.originalPricePerUnit * item.quantity)}</p>
                           <p className="font-semibold text-red-600">{formatCurrency(item.totalPrice)}</p>
@@ -173,6 +197,23 @@ export function OrderDetailClient({ order }: Props) {
                   </div>
                 ))}
               </div>
+              {order.redeemedReward && (
+                <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                  <p className="text-sm font-semibold text-orange-800">
+                    🎁 {lang === 'ar' ? 'مكافأة ولاء مستخدمة:' : 'Loyalty reward used:'} {order.redeemedReward.reward.name}
+                  </p>
+                  <p className="text-xs text-orange-700 mt-1">
+                    {REWARD_TYPE_LABELS[order.redeemedReward.rewardType] ?? order.redeemedReward.rewardType}
+                    {' · '}
+                    <span className="font-mono" dir="ltr">{order.redeemedReward.couponCode}</span>
+                  </p>
+                </div>
+              )}
+              {typeof order.loyaltyPointsEarned === 'number' && order.loyaltyPointsEarned > 0 && (
+                <p className="mt-3 text-sm text-blue-700 font-medium">
+                  ⭐ {lang === 'ar' ? `منح هذا الطلب ${order.loyaltyPointsEarned} نقطة ولاء للعميل` : `This order earned the customer ${order.loyaltyPointsEarned} loyalty points`}
+                </p>
+              )}
               <div className={`border-t border-gray-200 mt-4 pt-4 flex items-center justify-between ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
                 <span className="text-lg font-semibold text-gray-900">{t.orderManagement.total}</span>
                 <span className="text-xl font-bold text-blue-900">{formatCurrency(order.totalPrice)}</span>

@@ -114,6 +114,7 @@ enum RewardType {
   FIXED_DISCOUNT        // Fixed amount discount (e.g., 10 JOD off)
   PERCENTAGE_DISCOUNT   // Percentage discount (e.g., 15% off)
   FREE_DELIVERY         // Free delivery
+  FREE_PRODUCT          // Free product added to the order (prize, value 0)
   CUSTOM                // Custom reward
 }
 
@@ -383,7 +384,10 @@ model OrderItem {
   
   // Buyer note for this item
   note          String?  // Optional note from buyer about this specific item
-  
+
+  // Loyalty prize item (added via redeemed FREE_PRODUCT reward, price 0)
+  isReward      Boolean  @default(false)
+
   // Relations
   orderId       String
   order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -609,6 +613,7 @@ model Product {
   collections     CollectionProduct[]   // Virtual groupings (Offers, Best Sellers, etc.)
   tags            ProductTag[]          // Filter tags
   discountCampaigns DiscountCampaignProduct[] // Discount campaigns targeting this product
+  loyaltyRewards  LoyaltyReward[]       // Loyalty rewards offering this product as a prize
   
   @@index([categoryId])
   @@index([brandId])
@@ -971,7 +976,8 @@ model LoyaltyConfig {
   minOrderValue       Float?                      // Min order value to earn points
   excludeDeliveryFees Boolean   @default(true)    // Exclude delivery from calculations
   roundingMode        String    @default("FLOOR") // FLOOR, CEIL, ROUND
-  
+  earnTrigger         String    @default("ORDER_PLACED") // ORDER_PLACED or DELIVERED
+
   updatedAt           DateTime  @updatedAt
 }
 
@@ -1080,7 +1086,12 @@ model LoyaltyReward {
   pointsCost      Int
   rewardType      RewardType
   discountValue   Float       // JOD for fixed, percentage for percentage discount
-  
+
+  // Free product reward (rewardType = FREE_PRODUCT)
+  productId       String?
+  product         Product?    @relation(fields: [productId], references: [id])
+  imageUrl        String?     // Optional reward image (falls back to product image)
+
   // Constraints
   maxDiscountCap  Float?      // Max discount amount for percentage discounts
   minOrderValue   Float?      // Min order value to use this reward
@@ -1113,6 +1124,12 @@ model RedeemedReward {
   rewardType      RewardType
   minOrderValue   Float?
   maxDiscountCap  Float?
+
+  // Free product snapshot (rewardType = FREE_PRODUCT)
+  productId       String?
+  productName     String?
+  productNameEn   String?
+  productImage    String?
   
   // Status
   expiresAt       DateTime

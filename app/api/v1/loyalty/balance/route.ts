@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
+import { db } from '@/lib/db'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
-import { getUserBalance } from '@/actions/loyalty-points'
+import { mapTransaction } from '@/lib/loyalty-dto'
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -13,8 +14,21 @@ export async function GET(request: NextRequest) {
   if (!user) return apiError(error ?? 'Unauthorized', 401)
 
   try {
-    const balanceData = await getUserBalance(user.id)
-    return apiResponse(balanceData)
+    const [balance, recentTransactions] = await Promise.all([
+      db.loyaltyBalance.findUnique({ where: { userId: user.id } }),
+      db.loyaltyTransaction.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+    ])
+
+    return apiResponse({
+      currentBalance: balance?.currentBalance ?? 0,
+      totalEarned: balance?.totalEarned ?? 0,
+      totalRedeemed: balance?.totalRedeemed ?? 0,
+      recentTransactions: recentTransactions.map(mapTransaction),
+    })
   } catch (err) {
     console.error('[API] /api/v1/loyalty/balance error:', err)
     return apiError('فشل في جلب الرصيد', 500)

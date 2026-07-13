@@ -28,35 +28,48 @@ async function getLoyaltyConfig() {
   return config
 }
 
+export type LoyaltyEarnEvent = 'ORDER_PLACED' | 'DELIVERED'
+
 /**
- * Calculate points for an order (called when order status = DELIVERED)
+ * Award points for an order. Fired on order placement AND on delivery —
+ * the configured `earnTrigger` decides which event actually awards points,
+ * and the `loyaltyPointsEarned` flag keeps the operation idempotent.
  */
-export async function calculateOrderPoints(orderId: string): Promise<ActionResponse<any>> {
+export async function awardOrderPoints(orderId: string, event: LoyaltyEarnEvent): Promise<ActionResponse<any>> {
   try {
     const config = await getLoyaltyConfig()
-    
+
     if (!config.isEnabled) {
       return { success: true, message: 'Loyalty system disabled' }
     }
-    
+
+    const earnTrigger = (config as { earnTrigger?: string }).earnTrigger ?? 'ORDER_PLACED'
+    if (earnTrigger !== event) {
+      return { success: true, message: `Points are awarded on ${earnTrigger}, skipping ${event}` }
+    }
+
     // Get order details
     const order = await db.order.findUnique({
       where: { id: orderId },
       include: { buyer: true },
     })
-    
+
     if (!order) {
       return { success: false, error: 'Order not found' }
     }
-    
-    if (order.status !== 'DELIVERED') {
+
+    if (order.status === 'CANCELLED') {
+      return { success: false, error: 'Cancelled orders do not earn points' }
+    }
+
+    if (event === 'DELIVERED' && order.status !== 'DELIVERED') {
       return { success: false, error: 'Order must be delivered to earn points' }
     }
-    
+
     if (order.loyaltyPointsEarned) {
       return { success: false, error: 'Points already awarded for this order' }
     }
-    
+
     // Calculate base amount (exclude delivery if configured)
     let baseAmount = order.totalPrice
     if (config.excludeDeliveryFees) {
@@ -129,19 +142,20 @@ export async function calculateOrderPoints(orderId: string): Promise<ActionRespo
       data: { loyaltyPointsEarned: points },
     })
     
-    // Send notification
+    // Send push notification (Firebase) + in-app notification record
     await createAndSendNotification(order.buyerId, {
       type: 'LOYALTY_POINTS_EARNED',
-      title: 'حصلت على نقاط!',
-      message: `تم إضافة ${points} نقطة إلى رصيدك من طلبك رقم ${order.orderNumber}`,
+      title: 'شكراً لطلبك من توريد 🧡',
+      message: `لقد حصلت على ${points} نقطة!\nاطلب في المرة القادمة للحصول على المزيد من النقاط 🎁`,
       linkUrl: `/loyalty`,
       data: {
         points: points.toString(),
         orderId,
         orderNumber: order.orderNumber,
+        type: 'order_points',
       },
     })
-    
+
     return {
       success: true,
       data: {
@@ -151,8 +165,64 @@ export async function calculateOrderPoints(orderId: string): Promise<ActionRespo
       },
     }
   } catch (error) {
-    console.error('[loyalty-points.calculateOrderPoints]', error)
+    console.error('[loyalty-points.awardOrderPoints]', error)
     return { success: false, error: 'Failed to calculate points' }
+  }
+}
+
+/**
+ * Backwards-compatible alias — awards points on delivery (if configured).
+ */
+export async function calculateOrderPoints(orderId: string): Promise<ActionResponse<any>> {
+  return awardOrderPoints(orderId, 'DELIVERED')
+}
+
+/**
+ * Reverse points previously awarded for an order (called when order is cancelled).
+ */
+export async function reverseOrderPoints(orderId: string): Promise<ActionResponse<any>> {
+  try {
+    const order = await db.order.findUnique({ where: { id: orderId } })
+
+    if (!order || !order.loyaltyPointsEarned || order.loyaltyPointsEarned <= 0) {
+      return { success: true, message: 'No points to reverse' }
+    }
+
+    const points = order.loyaltyPointsEarned
+    const balance = await db.loyaltyBalance.findUnique({ where: { userId: order.buyerId } })
+
+    if (balance) {
+      await db.loyaltyBalance.update({
+        where: { userId: order.buyerId },
+        data: {
+          currentBalance: Math.max(0, balance.currentBalance - points),
+          totalEarned: Math.max(0, balance.totalEarned - points),
+        },
+      })
+    }
+
+    await db.loyaltyTransaction.create({
+      data: {
+        userId: order.buyerId,
+        type: 'MANUAL_REMOVE',
+        points: -points,
+        description: `استرجاع نقاط الطلب الملغي رقم ${order.orderNumber}`,
+        descriptionEn: `Points reversed for cancelled order ${order.orderNumber}`,
+        referenceId: orderId,
+        referenceType: 'ORDER',
+        metadata: { reason: 'ORDER_CANCELLED' },
+      },
+    })
+
+    await db.order.update({
+      where: { id: orderId },
+      data: { loyaltyPointsEarned: null },
+    })
+
+    return { success: true, data: { points } }
+  } catch (error) {
+    console.error('[loyalty-points.reverseOrderPoints]', error)
+    return { success: false, error: 'Failed to reverse points' }
   }
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
 import { getActiveCampaignsWithProgress } from '@/actions/loyalty-campaigns'
+import { mapCampaign } from '@/lib/loyalty-dto'
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const campaigns = await getActiveCampaignsWithProgress()
-    return apiResponse({ campaigns })
+    return apiResponse({ campaigns: campaigns.map(mapCampaign) })
   } catch (err) {
     console.error('[API] /api/v1/loyalty/campaigns error:', err)
     return apiError('فشل في جلب الحملات', 500)

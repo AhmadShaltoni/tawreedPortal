@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
+import { db } from '@/lib/db'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
-import { getUserRedeemedRewards } from '@/actions/loyalty-rewards'
+import { mapCoupon } from '@/lib/loyalty-dto'
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -13,8 +14,15 @@ export async function GET(request: NextRequest) {
   if (!user) return apiError(error ?? 'Unauthorized', 401)
 
   try {
-    const coupons = await getUserRedeemedRewards(user.id)
-    return apiResponse({ coupons })
+    const redeemedRewards = await db.redeemedReward.findMany({
+      where: { userId: user.id },
+      include: {
+        reward: { select: { id: true, name: true, nameEn: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    return apiResponse({ coupons: redeemedRewards.map(mapCoupon) })
   } catch (err) {
     console.error('[API] /api/v1/loyalty/coupons error:', err)
     return apiError('فشل في جلب الكوبونات', 500)

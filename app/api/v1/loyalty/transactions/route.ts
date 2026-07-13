@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
+import { db } from '@/lib/db'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
-import { getUserTransactions } from '@/actions/loyalty-points'
+import { mapTransaction } from '@/lib/loyalty-dto'
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -17,8 +18,25 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(Number(searchParams.get('limit')) || 20, 100)
 
   try {
-    const transactionsData = await getUserTransactions(user.id, page, limit)
-    return apiResponse(transactionsData)
+    const [transactions, total] = await Promise.all([
+      db.loyaltyTransaction.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      db.loyaltyTransaction.count({ where: { userId: user.id } }),
+    ])
+
+    return apiResponse({
+      transactions: transactions.map(mapTransaction),
+      pagination: {
+        page,
+        limit,
+        total,
+        hasMore: page * limit < total,
+      },
+    })
   } catch (err) {
     console.error('[API] /api/v1/loyalty/transactions error:', err)
     return apiError('فشل في جلب السجل', 500)

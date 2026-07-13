@@ -2,6 +2,7 @@
 
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
+import { revalidatePath } from 'next/cache'
 import type { ActionResponse } from '@/types'
 
 /**
@@ -45,23 +46,41 @@ export async function updateLoyaltyConfig(formData: FormData): Promise<ActionRes
       return { success: false, error: 'Unauthorized' }
     }
     
+    const isOn = (name: string) => {
+      const v = formData.get(name)
+      return v === 'true' || v === 'on'
+    }
+
+    const roundingMode = (formData.get('roundingMode') as string) || 'FLOOR'
+    const earnTrigger = (formData.get('earnTrigger') as string) || 'ORDER_PLACED'
+
     const data = {
-      isEnabled: formData.get('isEnabled') === 'true',
+      isEnabled: isOn('isEnabled'),
       pointsPerJod: Number(formData.get('pointsPerJod')),
-      calculationBase: Number(formData.get('calculationBase')),
+      calculationBase: Number(formData.get('calculationBase') || 1),
       minOrderValue: formData.get('minOrderValue') ? Number(formData.get('minOrderValue')) : null,
-      excludeDeliveryFees: formData.get('excludeDeliveryFees') === 'true',
-      roundingMode: formData.get('roundingMode') as string,
+      excludeDeliveryFees: isOn('excludeDeliveryFees'),
+      roundingMode,
+      earnTrigger,
     }
-    
+
     // Validate
-    if (data.pointsPerJod <= 0 || data.calculationBase <= 0) {
-      return { success: false, error: 'Invalid configuration' }
+    if (!Number.isFinite(data.pointsPerJod) || data.pointsPerJod <= 0) {
+      return { success: false, error: 'قيمة النقاط لكل دينار يجب أن تكون رقماً أكبر من صفر' }
     }
-    
+    if (!Number.isFinite(data.calculationBase) || data.calculationBase <= 0) {
+      return { success: false, error: 'أساس الاحتساب يجب أن يكون رقماً أكبر من صفر' }
+    }
+    if (!['FLOOR', 'CEIL', 'ROUND'].includes(roundingMode)) {
+      return { success: false, error: 'طريقة التقريب غير صالحة' }
+    }
+    if (!['ORDER_PLACED', 'DELIVERED'].includes(earnTrigger)) {
+      return { success: false, error: 'وقت منح النقاط غير صالح' }
+    }
+
     // Get or create config
     let config = await db.loyaltyConfig.findFirst()
-    
+
     if (config) {
       config = await db.loyaltyConfig.update({
         where: { id: config.id },
@@ -70,7 +89,8 @@ export async function updateLoyaltyConfig(formData: FormData): Promise<ActionRes
     } else {
       config = await db.loyaltyConfig.create({ data })
     }
-    
+
+    revalidatePath('/admin/loyalty/config')
     return { success: true, data: config }
   } catch (error) {
     console.error('[loyalty-config.updateLoyaltyConfig]', error)
@@ -118,17 +138,20 @@ export async function updateWelcomeBonusConfig(formData: FormData): Promise<Acti
     }
     
     const data = {
-      isEnabled: formData.get('isEnabled') === 'true',
+      isEnabled: formData.get('isEnabled') === 'true' || formData.get('isEnabled') === 'on',
       points: Number(formData.get('points')),
       trigger: formData.get('trigger') as string,
     }
-    
-    if (data.points < 0) {
-      return { success: false, error: 'Invalid points' }
+
+    if (!Number.isFinite(data.points) || data.points < 0) {
+      return { success: false, error: 'عدد النقاط غير صالح' }
     }
-    
+    if (!['SIGNUP', 'FIRST_DELIVERED_ORDER'].includes(data.trigger)) {
+      return { success: false, error: 'وقت منح المكافأة غير صالح' }
+    }
+
     let config = await db.welcomeBonusConfig.findFirst()
-    
+
     if (config) {
       config = await db.welcomeBonusConfig.update({
         where: { id: config.id },
@@ -137,7 +160,8 @@ export async function updateWelcomeBonusConfig(formData: FormData): Promise<Acti
     } else {
       config = await db.welcomeBonusConfig.create({ data })
     }
-    
+
+    revalidatePath('/admin/loyalty/config')
     return { success: true, data: config }
   } catch (error) {
     console.error('[loyalty-config.updateWelcomeBonusConfig]', error)
@@ -186,18 +210,22 @@ export async function updateReferralConfig(formData: FormData): Promise<ActionRe
     }
     
     const data = {
-      isEnabled: formData.get('isEnabled') === 'true',
+      isEnabled: formData.get('isEnabled') === 'true' || formData.get('isEnabled') === 'on',
       inviterPoints: Number(formData.get('inviterPoints')),
       inviteePoints: Number(formData.get('inviteePoints')),
       trigger: formData.get('trigger') as string,
     }
-    
-    if (data.inviterPoints < 0 || data.inviteePoints < 0) {
-      return { success: false, error: 'Invalid points' }
+
+    if (!Number.isFinite(data.inviterPoints) || data.inviterPoints < 0 ||
+        !Number.isFinite(data.inviteePoints) || data.inviteePoints < 0) {
+      return { success: false, error: 'عدد النقاط غير صالح' }
     }
-    
+    if (!['SIGNUP', 'FIRST_DELIVERED_ORDER'].includes(data.trigger)) {
+      return { success: false, error: 'وقت منح المكافأة غير صالح' }
+    }
+
     let config = await db.referralConfig.findFirst()
-    
+
     if (config) {
       config = await db.referralConfig.update({
         where: { id: config.id },
@@ -206,7 +234,8 @@ export async function updateReferralConfig(formData: FormData): Promise<ActionRe
     } else {
       config = await db.referralConfig.create({ data })
     }
-    
+
+    revalidatePath('/admin/loyalty/config')
     return { success: true, data: config }
   } catch (error) {
     console.error('[loyalty-config.updateReferralConfig]', error)

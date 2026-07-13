@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { requireRole } from '@/lib/auth'
 import { updateOrderStatusSchema } from '@/lib/validations'
 import { createAndSendNotification } from '@/lib/push-notifications'
-import { calculateOrderPoints, awardWelcomeBonus, processReferralRewards } from './loyalty-points'
+import { awardOrderPoints, reverseOrderPoints, awardWelcomeBonus, processReferralRewards } from './loyalty-points'
 import { updateUserCampaignProgress } from './loyalty-campaigns'
 import type { ActionResponse, AdminDashboardStats } from '@/types'
 import { revalidatePath } from 'next/cache'
@@ -50,6 +50,9 @@ export async function getAdminOrderById(id: string) {
     include: {
       buyer: { select: { id: true, username: true, email: true, storeName: true, phone: true, city: true, businessAddress: true } },
       items: { include: { product: { select: { id: true, name: true, nameEn: true, image: true } } } },
+      redeemedReward: {
+        include: { reward: { select: { id: true, name: true, nameEn: true } } },
+      },
     },
   })
 }
@@ -102,10 +105,15 @@ export async function updateAdminOrderStatus(formData: FormData): Promise<Action
     },
   })
 
+  // Loyalty system hooks - when order is cancelled, reverse any earned points
+  if (validated.data.status === 'CANCELLED') {
+    await reverseOrderPoints(validated.data.orderId)
+  }
+
   // Loyalty system hooks - when order is delivered
   if (validated.data.status === 'DELIVERED') {
-    // Calculate and award loyalty points
-    await calculateOrderPoints(validated.data.orderId)
+    // Calculate and award loyalty points (no-op if already awarded on placement)
+    await awardOrderPoints(validated.data.orderId, 'DELIVERED')
     
     // Update campaign progress
     await updateUserCampaignProgress(order.buyerId, validated.data.orderId)

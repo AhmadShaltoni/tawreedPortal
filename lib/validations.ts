@@ -193,6 +193,7 @@ export const createOrderFromCartSchema = z.object({
   buyerNotes: z.string().optional(),
   notes: z.string().max(1000, 'Notes are too long').optional(),
   couponCode: z.string().optional(),
+  loyaltyCouponCode: z.string().optional(),
   itemNotes: z.array(z.object({
     cartItemId: z.string().min(1),
     note: z.string().max(500, 'Note is too long'),

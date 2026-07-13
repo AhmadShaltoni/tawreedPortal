@@ -63,6 +63,7 @@ export async function GET(
       subtotal: item.totalPrice,
     },
     note: item.note || null,
+    isReward: item.isReward,
   }))
 
   return apiResponse({ 
