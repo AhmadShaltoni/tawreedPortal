@@ -90,6 +90,7 @@ export function ProductListClient({
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [showExportMenu, setShowExportMenu] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [movingToTop, setMovingToTop] = useState(false)
   const [targetPosition, setTargetPosition] = useState('')
@@ -169,7 +170,8 @@ export function ProductListClient({
     router.push(`/admin/products?${params.toString()}`)
   }
 
-  async function handleExportPDF() {
+  async function handleExportPDF(includeWholesale: boolean) {
+    setShowExportMenu(false)
     setExporting(true)
     try {
       const allProducts = await getAllProductsForExport({
@@ -206,10 +208,12 @@ export function ProductListClient({
 
             rows.push({
               name: variantName,
+              // Show each variant's own image so different sizes can display
+              // different product shapes; fall back to the main product image.
               image: v.image || p.image,
               stock: v.stock,
               unitInfo: unitLabel,
-              wholesalePrice: defaultUnit?.wholesalePrice != null
+              wholesalePrice: includeWholesale && defaultUnit?.wholesalePrice != null
                 ? formatCurrency(defaultUnit.wholesalePrice)
                 : '',
               appPrice: defaultUnit?.price != null
@@ -333,15 +337,41 @@ export function ProductListClient({
       <div className={`flex items-center justify-between ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
         <h1 className="text-2xl font-bold text-gray-900">{t.productManagement.title}</h1>
         <div className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
-          <Button
-            variant="outline"
-            onClick={handleExportPDF}
-            disabled={exporting}
-            className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}
-          >
-            <FileDown className="w-4 h-4" />
-            {exporting ? 'جاري التصدير...' : 'تصدير PDF'}
-          </Button>
+          <div className="relative">
+            <Button
+              variant="outline"
+              onClick={() => setShowExportMenu((v) => !v)}
+              disabled={exporting}
+              className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}
+            >
+              <FileDown className="w-4 h-4" />
+              {exporting ? 'جاري التصدير...' : 'تصدير PDF'}
+            </Button>
+            {showExportMenu && !exporting && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setShowExportMenu(false)}
+                />
+                <div className={`absolute top-full mt-1 z-20 min-w-[220px] rounded-lg border border-gray-200 bg-white shadow-lg py-1 ${dir === 'rtl' ? 'right-0' : 'left-0'}`}>
+                  <button
+                    type="button"
+                    onClick={() => handleExportPDF(true)}
+                    className="block w-full text-right px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    تصدير مع سعر الجملة
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExportPDF(false)}
+                    className="block w-full text-right px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    تصدير بدون سعر الجملة
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
           <Link href="/admin/products/new">
             <Button variant="primary" className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
               <Plus className="w-4 h-4" />

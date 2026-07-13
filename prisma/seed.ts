@@ -477,6 +477,27 @@ const jordanCities: { name: string; nameEn: string; sortOrder: number; areas: { 
 async function main() {
   console.log('🌱 Seeding database...')
 
+  // Seed default selling unit types (admin-manageable at /admin/units)
+  const defaultUnitTypes = [
+    { code: 'PIECE', name: 'حبة', nameEn: 'Piece', defaultPieces: 1, sortOrder: 0 },
+    { code: 'DOZEN', name: 'دزينة', nameEn: 'Dozen', defaultPieces: 12, sortOrder: 1 },
+    { code: 'CARTON', name: 'كرتونة', nameEn: 'Carton', defaultPieces: 1, sortOrder: 2 },
+    { code: 'BOX', name: 'صندوق', nameEn: 'Box', defaultPieces: 1, sortOrder: 3 },
+    { code: 'PACK', name: 'عبوة', nameEn: 'Pack', defaultPieces: 1, sortOrder: 4 },
+    { code: 'KG', name: 'كيلو', nameEn: 'Kilogram', defaultPieces: 1, sortOrder: 5 },
+    { code: 'GRAM', name: 'جرام', nameEn: 'Gram', defaultPieces: 1, sortOrder: 6 },
+    { code: 'LITER', name: 'لتر', nameEn: 'Liter', defaultPieces: 1, sortOrder: 7 },
+    { code: 'PALLET', name: 'طبلية', nameEn: 'Pallet', defaultPieces: 1, sortOrder: 8 },
+  ]
+  for (const ut of defaultUnitTypes) {
+    await prisma.unitType.upsert({
+      where: { code: ut.code },
+      update: {},
+      create: ut,
+    })
+  }
+  console.log(`✅ Seeded ${defaultUnitTypes.length} unit types`)
+
   // Seed hierarchical categories
   let totalCategories = 0
   for (const rootCat of rootCategories) {

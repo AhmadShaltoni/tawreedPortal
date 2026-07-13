@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, Plus, X, Languages, Loader2 } from 'lucide-react'
+import { ArrowRight, Languages, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
@@ -14,6 +14,7 @@ import { useAutoTranslate } from '@/lib/useAutoTranslate'
 import { getTagsByCategory } from '@/actions/tags'
 import { compressImage } from '@/lib/compress-image'
 import { ImageLightbox } from '@/components/ui/ImageLightbox'
+import { VariantsEditor, createDefaultVariant, type VariantEntry, type UnitTypeOption } from '@/components/admin/VariantsEditor'
 
 interface CategoryNode {
   id: string
@@ -54,75 +55,10 @@ interface Props {
   defaultSupplierId: string | null
   brands: BrandOption[]
   collections: CollectionOption[]
+  unitTypes: UnitTypeOption[]
 }
 
-interface UnitEntry {
-  unit: string
-  label: string
-  labelEn: string
-  piecesPerUnit: number
-  price: number
-  wholesalePrice: number | null
-  compareAtPrice: number | null
-  isDefault: boolean
-}
-
-interface VariantOption {
-  name: string
-  nameEn: string
-  stock: number
-  priceOverride: number | null
-  imageFile: File | null
-  imagePreview: string | null
-}
-
-interface VariantEntry {
-  size: string
-  sizeEn: string
-  sku: string
-  barcode: string
-  stock: number
-  minOrderQuantity: number
-  isDefault: boolean
-  imageFile: File | null
-  imagePreview: string | null
-  units: UnitEntry[]
-  options: VariantOption[]
-}
-
-const UNIT_OPTIONS = [
-  { value: 'PIECE', label: 'حبة' },
-  { value: 'DOZEN', label: 'دزينة' },
-  { value: 'CARTON', label: 'كرتونة' },
-  { value: 'BOX', label: 'صندوق' },
-  { value: 'PACK', label: 'عبوة' },
-  { value: 'KG', label: 'كيلو' },
-  { value: 'GRAM', label: 'جرام' },
-  { value: 'LITER', label: 'لتر' },
-  { value: 'PALLET', label: 'طبلية' },
-]
-
-const UNIT_LABEL_MAP: Record<string, { ar: string; en: string; defaultPieces: number }> = {
-  PIECE:  { ar: 'قطعة', en: 'Piece', defaultPieces: 1 },
-  DOZEN:  { ar: 'دزينة', en: 'Dozen', defaultPieces: 12 },
-  CARTON: { ar: 'كرتونة', en: 'Carton', defaultPieces: 1 },
-  BOX:    { ar: 'صندوق', en: 'Box', defaultPieces: 1 },
-  PACK:   { ar: 'عبوة', en: 'Pack', defaultPieces: 1 },
-  KG:     { ar: 'كيلو', en: 'Kilogram', defaultPieces: 1 },
-  GRAM:   { ar: 'جرام', en: 'Gram', defaultPieces: 1 },
-  LITER:  { ar: 'لتر', en: 'Liter', defaultPieces: 1 },
-  PALLET: { ar: 'طبلية', en: 'Pallet', defaultPieces: 1 },
-}
-
-function createDefaultUnit(): UnitEntry {
-  return { unit: 'PIECE', label: 'قطعة', labelEn: 'Piece', piecesPerUnit: 1, price: 0, wholesalePrice: null, compareAtPrice: null, isDefault: true }
-}
-
-function createDefaultVariant(isDefault: boolean): VariantEntry {
-  return { size: '', sizeEn: '', sku: '', barcode: '', stock: 1, minOrderQuantity: 1, isDefault, imageFile: null, imagePreview: null, units: [createDefaultUnit()], options: [] }
-}
-
-export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, brands, collections }: Props) {
+export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, brands, collections, unitTypes }: Props) {
   const { t, dir, lang } = useLanguage()
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
@@ -142,7 +78,7 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
   const [availableTags, setAvailableTags] = useState<TagOption[]>([])
   
   // Variants
-  const [variants, setVariants] = useState<VariantEntry[]>([createDefaultVariant(true)])
+  const [variants, setVariants] = useState<VariantEntry[]>(() => [createDefaultVariant(true, unitTypes)])
   
   // Refs
   const nameEnRef = useRef<HTMLInputElement>(null)
@@ -237,76 +173,6 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
         return [...prev, tagId]
       }
     })
-  }
-
-  // Variant management
-  function addVariant() {
-    setVariants([...variants, createDefaultVariant(false)])
-  }
-
-  function removeVariant(vi: number) {
-    if (variants.length <= 1) return
-    const updated = variants.filter((_, i) => i !== vi)
-    if (!updated.some((v) => v.isDefault)) updated[0].isDefault = true
-    setVariants(updated)
-  }
-
-  function updateVariant(vi: number, field: keyof Omit<VariantEntry, 'options' | 'units'>, value: string | number | boolean) {
-    const updated = [...variants]
-    if (field === 'isDefault' && value === true) {
-      updated.forEach((v, i) => { v.isDefault = i === vi })
-    } else {
-      (updated[vi] as any)[field] = value
-    }
-    setVariants(updated)
-  }
-
-  function addVariantOption(vi: number) {
-    const updated = [...variants]
-    updated[vi].options.push({ name: '', nameEn: '', stock: 0, priceOverride: null, imageFile: null, imagePreview: null })
-    setVariants(updated)
-  }
-
-  function removeVariantOption(vi: number, oi: number) {
-    const updated = [...variants]
-    updated[vi].options = updated[vi].options.filter((_, i) => i !== oi)
-    setVariants(updated)
-  }
-
-  function updateVariantOption(vi: number, oi: number, field: keyof VariantOption, value: string | number | null) {
-    const updated = [...variants]
-    updated[vi].options[oi] = { ...updated[vi].options[oi], [field]: value }
-    setVariants(updated)
-  }
-
-  // Unit management
-  function addUnit(vi: number) {
-    const updated = [...variants]
-    updated[vi].units.push({ unit: 'DOZEN', label: 'دزينة', labelEn: 'Dozen', piecesPerUnit: 12, price: 0, wholesalePrice: null, compareAtPrice: null, isDefault: false })
-    setVariants(updated)
-  }
-
-  function removeUnit(vi: number, ui: number) {
-    const updated = [...variants]
-    const units = updated[vi].units.filter((_, i) => i !== ui)
-    if (!units.some((u) => u.isDefault) && units.length > 0) units[0].isDefault = true
-    updated[vi].units = units
-    setVariants(updated)
-  }
-
-  function updateUnit(vi: number, ui: number, field: keyof UnitEntry, value: string | number | boolean) {
-    const updated = [...variants]
-    const units = [...updated[vi].units]
-    if (field === 'unit') {
-      const info = UNIT_LABEL_MAP[value as string]
-      units[ui] = { ...units[ui], unit: value as string, label: info?.ar ?? '', labelEn: info?.en ?? '', piecesPerUnit: info?.defaultPieces ?? 1 }
-    } else if (field === 'isDefault' && value === true) {
-      units.forEach((u, i) => { u.isDefault = i === ui })
-    } else {
-      (units[ui] as any)[field] = value
-    }
-    updated[vi].units = units
-    setVariants(updated)
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -429,6 +295,13 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
                 <button type="button" className="text-gray-400 hover:text-blue-600 p-1" onClick={() => translate.retry('descriptionEn', descArRef.current?.value || '', descEnRef)}><Languages className="w-4 h-4" /></button>
               </div>
             </div>
+
+            <Textarea
+              label="كلمات البحث (مرادفات، لهجات، أخطاء شائعة)"
+              name="keywords"
+              placeholder="مثال: بندورة، طماطم، شوكلاته، شوكولا — يفصل بينها بفاصلة أو مسافة"
+              rows={2}
+            />
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{t.productManagement.image}</label>
@@ -579,252 +452,18 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
           <CardHeader>
             <div className={`flex items-center justify-between ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
               <h2 className="text-lg font-semibold text-gray-900">الأحجام والنكهات</h2>
-              <button type="button" onClick={addVariant} className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 font-medium">
-                <Plus className="w-4 h-4" />
-                إضافة حجم
-              </button>
+              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                {variants.length} {variants.length === 1 ? 'حجم' : 'أحجام'}
+              </span>
             </div>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {variants.map((variant, vi) => (
-              <div key={vi} className={`border-2 rounded-xl p-5 space-y-4 ${variant.isDefault ? 'border-blue-300 bg-blue-50/30' : 'border-gray-200'}`}>
-                <div className={`flex items-center justify-between ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="radio" checked={variant.isDefault} onChange={() => updateVariant(vi, 'isDefault', true)} className="text-blue-600" />
-                    <span className={variant.isDefault ? 'font-semibold text-blue-700' : 'text-gray-600'}>الحجم الافتراضي</span>
-                  </label>
-                  {variants.length > 1 && (
-                    <button type="button" onClick={() => removeVariant(vi)} className="text-red-500 hover:text-red-700 p-1">
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Variant Basic Info */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">اسم الحجم (عربي) *</label>
-                    <input type="text" value={variant.size} onChange={(e) => updateVariant(vi, 'size', e.target.value)} placeholder="مثال: 1 لتر" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" required />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">اسم الحجم (إنجليزي)</label>
-                    <input type="text" value={variant.sizeEn} onChange={(e) => updateVariant(vi, 'sizeEn', e.target.value)} placeholder="e.g., 1L" dir="ltr" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
-                  </div>
-                </div>
-
-                {/* Variant Image */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">صورة الحجم (اختياري)</label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0] || null
-                        const updated = [...variants]
-                        updated[vi] = {
-                          ...updated[vi],
-                          imageFile: file,
-                          imagePreview: file ? URL.createObjectURL(file) : null,
-                        }
-                        setVariants(updated)
-                      }}
-                      className="text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                    />
-                    {variant.imagePreview && (
-                      <div className="relative">
-                        <button
-                          type="button"
-                          title="عرض الصورة"
-                          onClick={() => setLightbox({ src: variant.imagePreview!, name: `صورة-${variant.size || `الحجم-${vi + 1}`}` })}
-                          className="block cursor-zoom-in"
-                        >
-                          <img src={variant.imagePreview} alt="" className="w-12 h-12 object-cover rounded-lg border hover:opacity-80 transition-opacity" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = [...variants]
-                            updated[vi] = { ...updated[vi], imageFile: null, imagePreview: null }
-                            setVariants(updated)
-                          }}
-                          className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px]"
-                        >×</button>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-gray-400 mt-1">صورة خاصة بهذا الحجم (مثال: صورة علبة زجاج مقابل حديد)</p>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">SKU</label>
-                    <input type="text" value={variant.sku} onChange={(e) => updateVariant(vi, 'sku', e.target.value)} dir="ltr" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">الباركود</label>
-                    <input type="text" value={variant.barcode} onChange={(e) => updateVariant(vi, 'barcode', e.target.value)} dir="ltr" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">أقل كمية للطلب *</label>
-                    <input type="number" min="1" value={variant.minOrderQuantity} onChange={(e) => updateVariant(vi, 'minOrderQuantity', parseInt(e.target.value) || 1)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" required />
-                  </div>
-                </div>
-
-                {/* Stock - shown only if no options */}
-                {variant.options.length === 0 && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">المخزون (إجمالي) *</label>
-                    <input type="number" min="0" value={variant.stock} onChange={(e) => updateVariant(vi, 'stock', parseInt(e.target.value) || 0)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" required />
-                  </div>
-                )}
-
-                {/* Variant Options - NEW FEATURE */}
-                <div className="border-t pt-3 mt-3">
-                  <div className={`flex items-center justify-between mb-3 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
-                    <h4 className="text-sm font-semibold text-gray-700">النكهات / الخيارات (اختياري)</h4>
-                    <button type="button" onClick={() => addVariantOption(vi)} className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium">
-                      <Plus className="w-3 h-3" />
-                      إضافة نكهة
-                    </button>
-                  </div>
-
-                  {variant.options.length === 0 ? (
-                    <p className="text-xs text-gray-500 italic">لم يتم إضافة نكهات بعد. اضغط أعلاه لإضافة نكهات متعددة (مثل: أحمر، أخضر، إلخ)</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {variant.options.map((option, oi) => (
-                        <div key={oi} className="border rounded-lg p-3 bg-gray-50/50 space-y-2">
-                          <div className={`flex items-center justify-between ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
-                            <span className="text-xs font-medium text-gray-600">النكهة #{oi + 1}</span>
-                            {variant.options.length > 1 && (
-                              <button type="button" onClick={() => removeVariantOption(vi, oi)} className="text-red-400 hover:text-red-600">
-                                <X className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">اسم النكهة (عربي) *</label>
-                              <input type="text" value={option.name} onChange={(e) => updateVariantOption(vi, oi, 'name', e.target.value)} placeholder="مثال: أحمر" className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" required />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">اسم النكهة (إنجليزي)</label>
-                              <input type="text" value={option.nameEn} onChange={(e) => updateVariantOption(vi, oi, 'nameEn', e.target.value)} placeholder="e.g., Red" dir="ltr" className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">المخزون المتاح *</label>
-                              <input type="number" min="0" value={option.stock} onChange={(e) => updateVariantOption(vi, oi, 'stock', parseInt(e.target.value) || 0)} className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" required />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">إضافة سعر (اختياري)</label>
-                              <input type="number" step="0.01" min="0" value={option.priceOverride ?? ''} onChange={(e) => updateVariantOption(vi, oi, 'priceOverride', e.target.value ? parseFloat(e.target.value) : null)} placeholder="مثال: 2.5" className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
-                            </div>
-                          </div>
-                          {/* Option Image Upload */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">صورة النكهة (اختياري)</label>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="file"
-                                accept="image/jpeg,image/png,image/webp"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0] || null
-                                  const updated = [...variants]
-                                  updated[vi].options[oi] = {
-                                    ...updated[vi].options[oi],
-                                    imageFile: file,
-                                    imagePreview: file ? URL.createObjectURL(file) : null,
-                                  }
-                                  setVariants(updated)
-                                }}
-                                className="w-full text-xs file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                              />
-                              {option.imagePreview && (
-                                <button
-                                  type="button"
-                                  title="عرض الصورة"
-                                  onClick={() => setLightbox({ src: option.imagePreview!, name: `صورة-${option.name || `النكهة-${oi + 1}`}` })}
-                                  className="block cursor-zoom-in"
-                                >
-                                  <img src={option.imagePreview} alt="" className="w-10 h-10 object-cover rounded border hover:opacity-80 transition-opacity" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Selling Units */}
-                <div className="border-t pt-3 mt-3">
-                  <div className={`flex items-center justify-between mb-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
-                    <h4 className="text-sm font-semibold text-gray-700">وحدات البيع</h4>
-                    <button type="button" onClick={() => addUnit(vi)} className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium">
-                      <Plus className="w-3 h-3" />
-                      إضافة وحدة
-                    </button>
-                  </div>
-                  <div className="space-y-3">
-                    {variant.units.map((entry, ui) => (
-                      <div key={ui} className={`border rounded-lg p-3 space-y-2 ${entry.isDefault ? 'border-green-300 bg-green-50/50' : 'border-gray-100 bg-gray-50/30'}`}>
-                        <div className={`flex items-center justify-between ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
-                          <label className="flex items-center gap-2 text-xs">
-                            <input type="radio" checked={entry.isDefault} onChange={() => updateUnit(vi, ui, 'isDefault', true)} className="text-green-600" />
-                            <span className={entry.isDefault ? 'font-semibold text-green-700' : 'text-gray-500'}>الوحدة الافتراضية</span>
-                          </label>
-                          {variant.units.length > 1 && (
-                            <button type="button" onClick={() => removeUnit(vi, ui)} className="text-red-400 hover:text-red-600 p-0.5">
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">نوع الوحدة</label>
-                            <select value={entry.unit} onChange={(e) => updateUnit(vi, ui, 'unit', e.target.value)} className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-                              {UNIT_OPTIONS.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                            </select>
-                          </div>
-                          {entry.unit !== 'PIECE' && (
-                            <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">عدد القطع</label>
-                              <input type="number" min="1" value={entry.piecesPerUnit} onChange={(e) => updateUnit(vi, ui, 'piecesPerUnit', parseInt(e.target.value) || 1)} className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
-                            </div>
-                          )}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">السعر *</label>
-                            <input type="number" step="0.01" min="0" value={entry.price || ''} onChange={(e) => updateUnit(vi, ui, 'price', parseFloat(e.target.value) || 0)} className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" required />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">السعر بالجملة</label>
-                            <input type="number" step="0.01" min="0" value={entry.wholesalePrice ?? ''} onChange={(e) => updateUnit(vi, ui, 'wholesalePrice', e.target.value ? parseFloat(e.target.value) : null as unknown as number)} placeholder="اختياري" className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">السعر الأصلي</label>
-                            <input type="number" step="0.01" min="0" value={entry.compareAtPrice ?? ''} onChange={(e) => updateUnit(vi, ui, 'compareAtPrice', e.target.value ? parseFloat(e.target.value) : null as unknown as number)} className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">اسم الوحدة (عربي)</label>
-                            <input type="text" value={entry.label} onChange={(e) => updateUnit(vi, ui, 'label', e.target.value)} className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" required />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">اسم الوحدة (إنجليزي)</label>
-                          <input type="text" value={entry.labelEn} onChange={(e) => updateUnit(vi, ui, 'labelEn', e.target.value)} dir="ltr" className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ))}
+          <CardContent>
+            <VariantsEditor
+              variants={variants}
+              onChange={setVariants}
+              onPreview={(src, name) => setLightbox({ src, name })}
+              unitTypes={unitTypes}
+            />
           </CardContent>
         </Card>
 

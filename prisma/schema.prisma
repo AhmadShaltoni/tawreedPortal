@@ -373,7 +373,7 @@ model OrderItem {
   
   // Pricing
   quantity      Int
-  unit          Unit
+  unit          String    // Unit type code snapshot (e.g., "PIECE", "DOZEN", or admin-created codes)
   pricePerUnit  Float     // Actual price paid (after discount if any)
   totalPrice    Float     // pricePerUnit × quantity
   
@@ -576,7 +576,9 @@ model Product {
   nameEn          String?   // English name
   description     String?   // Arabic description
   descriptionEn   String?   // English description
-  
+  keywords        String?   // Admin-entered search synonyms (dialects, plurals, common misspellings)
+  searchText      String    @default("") // Normalized text for search: names + brand + variant sizes + options + keywords
+
   // Media
   image           String?   // Main product image path
   images          String[]  // Additional images
@@ -613,6 +615,7 @@ model Product {
   @@index([supplierId])
   @@index([isActive])
   @@index([sortOrder])
+  @@index([searchText(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 // Product size variant (e.g., 2kg, 4kg of the same product)
@@ -674,11 +677,27 @@ model VariantOption {
   @@index([isActive])
 }
 
+// Admin-managed unit type (drives the "نوع الوحدة" dropdown in product forms)
+model UnitType {
+  id            String   @id @default(cuid())
+  code          String   @unique // Stable code stored on ProductUnit.unit (e.g., "PIECE", "DOZEN", or generated)
+  name          String   // Arabic name: "حبة", "دزينة", "كرتونة"
+  nameEn        String?  // English name: "Piece", "Dozen", "Carton"
+  defaultPieces Int      @default(1) // Default pieces-per-unit suggested when selected
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([isActive])
+}
+
 // Product selling unit (e.g., piece, dozen, carton with different prices)
 model ProductUnit {
   id              String    @id @default(cuid())
-  
-  unit            Unit      // PIECE, DOZEN, CARTON, BOX, etc.
+
+  unit            String    // Unit type code (matches UnitType.code, e.g., "PIECE", "DOZEN")
   label           String    // Arabic label: "قطعة", "دزينة", "كرتونة"
   labelEn         String?   // English label: "Piece", "Dozen", "Carton"
   piecesPerUnit   Int       @default(1)  // 1 for piece, 12 for dozen, 36 for carton

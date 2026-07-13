@@ -511,6 +511,7 @@ export const en: TranslationKeys = {
     brands: 'Brands',
     suppliers: 'Suppliers',
     categories: 'Categories',
+    units: 'Selling Units',
     orders: 'Orders',
     users: 'Users',
     notifications: 'Notifications',

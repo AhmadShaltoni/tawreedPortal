@@ -102,7 +102,7 @@ export interface OrderItem {
   unitLabelEn: string | null
   piecesPerUnit: number
   quantity: number
-  unit: Unit
+  unit: string // Unit type code (dynamic, matches UnitType.code)
   pricePerUnit: number
   totalPrice: number
   orderId: string
@@ -110,7 +110,7 @@ export interface OrderItem {
 
 export interface ProductUnit {
   id: string
-  unit: Unit
+  unit: string // Unit type code (dynamic, matches UnitType.code)
   label: string
   labelEn: string | null
   piecesPerUnit: number

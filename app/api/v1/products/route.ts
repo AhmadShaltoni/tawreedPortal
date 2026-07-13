@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { apiResponse, corsOptions } from '@/lib/api-auth'
 import { calcProductDiscounts, applyDiscount } from '@/lib/discount-engine'
+import { searchProductIds, paginateSearchIds, sortByIdOrder } from '@/lib/search-index'
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -60,11 +61,16 @@ export async function GET(request: NextRequest) {
     where.collections = { some: { collectionId } }
   }
 
+  // Arabic-aware fuzzy search: ranked IDs from searchText, then paginated
+  // in rank order after applying the other filters
+  let searchPageIds: string[] | null = null
+  let searchTotal = 0
   if (search) {
-    where.OR = [
-      { name: { contains: search, mode: 'insensitive' } },
-      { nameEn: { contains: search, mode: 'insensitive' } },
-    ]
+    const rankedIds = await searchProductIds(search)
+    const paged = await paginateSearchIds(rankedIds, where, (page - 1) * limit, limit)
+    searchPageIds = paged.pageIds
+    searchTotal = paged.total
+    where.id = { in: searchPageIds }
   }
 
   // Card-level (lightweight) response for mobile lists
@@ -95,22 +101,23 @@ export async function GET(request: NextRequest) {
           },
         },
         orderBy: { sortOrder: 'asc' },
-        skip: (page - 1) * limit,
-        take: limit,
+        ...(searchPageIds === null ? { skip: (page - 1) * limit, take: limit } : {}),
       }),
-      db.product.count({ where }),
+      searchPageIds === null ? db.product.count({ where }) : Promise.resolve(searchTotal),
     ])
+
+    const orderedProducts = searchPageIds ? sortByIdOrder(products, searchPageIds) : products
 
     // Calculate campaign discounts for all products in batch
     const discountMap = await calcProductDiscounts(
-      products.map(p => ({
+      orderedProducts.map(p => ({
         id: p.id,
         categoryId: p.categoryId,
         collectionIds: p.collections.map(c => c.collectionId),
       }))
     )
 
-    const productCards = products.map((p) => {
+    const productCards = orderedProducts.map((p) => {
       const defaultUnit = p.variants[0]?.units[0]
       const originalPrice = defaultUnit?.price ?? 0
       const campaignDiscount = discountMap.get(p.id) || 0
@@ -190,15 +197,16 @@ export async function GET(request: NextRequest) {
         },
       },
       orderBy: { sortOrder: 'asc' },
-      skip: (page - 1) * limit,
-      take: limit,
+      ...(searchPageIds === null ? { skip: (page - 1) * limit, take: limit } : {}),
     }),
-    db.product.count({ where }),
+    searchPageIds === null ? db.product.count({ where }) : Promise.resolve(searchTotal),
   ])
+
+  const orderedProducts = searchPageIds ? sortByIdOrder(products, searchPageIds) : products
 
   // Calculate campaign discounts for all products in batch
   const discountMap = await calcProductDiscounts(
-    products.map(p => ({
+    orderedProducts.map(p => ({
       id: p.id,
       categoryId: p.categoryId,
       collectionIds: p.collections.map(c => c.collectionId),
@@ -206,7 +214,7 @@ export async function GET(request: NextRequest) {
   )
 
   // Apply campaign discounts to product units
-  const productsWithDiscounts = products.map(p => {
+  const productsWithDiscounts = orderedProducts.map(p => {
     const campaignDiscount = discountMap.get(p.id) || 0
     if (campaignDiscount === 0) {
       // Remove collections from response (internal only)

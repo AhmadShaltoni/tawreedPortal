@@ -84,9 +84,23 @@ export const updateOrderStatusSchema = z.object({
 // E-COMMERCE VALIDATIONS
 // ============================================
 
+// Unit type validations (admin-managed selling unit types)
+export const createUnitTypeSchema = z.object({
+  name: z.string().min(1, 'اسم الوحدة مطلوب'),
+  nameEn: z.string().optional(),
+  defaultPieces: z.coerce.number().int().positive('عدد القطع يجب أن يكون 1 على الأقل').optional(),
+})
+
+export const updateUnitTypeSchema = z.object({
+  name: z.string().min(1, 'اسم الوحدة مطلوب').optional(),
+  nameEn: z.string().optional(),
+  defaultPieces: z.coerce.number().int().positive('عدد القطع يجب أن يكون 1 على الأقل').optional(),
+  isActive: z.boolean().optional(),
+})
+
 // Product unit validation (for multi-unit pricing)
 export const productUnitSchema = z.object({
-  unit: z.enum(['KG', 'GRAM', 'LITER', 'PIECE', 'PACK', 'BOX', 'CARTON', 'DOZEN', 'PALLET']),
+  unit: z.string().min(1, 'Unit type is required'),
   label: z.string().min(1, 'Unit label is required'),
   labelEn: z.string().optional(),
   piecesPerUnit: z.coerce.number().int().positive('Pieces per unit must be at least 1'),

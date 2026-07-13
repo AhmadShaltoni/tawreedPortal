@@ -4,8 +4,8 @@ import { db } from '@/lib/db'
 import { requireRole } from '@/lib/auth'
 import { createProductSchema, updateProductSchema, productVariantSchema } from '@/lib/validations'
 import { saveProductImage, deleteProductImage } from '@/lib/upload'
+import { rebuildProductSearchText } from '@/lib/search-index'
 import type { ActionResponse } from '@/types'
-import type { Unit } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 export async function createProduct(formData: FormData): Promise<ActionResponse<{ id: string }>> {
@@ -27,6 +27,8 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
   if (!validated.success) {
     return { success: false, errors: validated.error.flatten().fieldErrors }
   }
+
+  const keywords = (formData.get('keywords') as string | null)?.trim() || null
 
   // Handle image upload
   let imagePath: string | undefined
@@ -67,7 +69,7 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
     isActive: boolean
     sortOrder: number
     units: Array<{
-      unit: Unit
+      unit: string
       label: string
       labelEn?: string
       piecesPerUnit: number
@@ -91,7 +93,6 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
       sortOrder: result.data.sortOrder ?? i,
       units: result.data.units.map((u, j) => ({
         ...u,
-        unit: u.unit as Unit,
         isDefault: u.isDefault ?? (j === 0),
         sortOrder: u.sortOrder ?? j,
       })),
@@ -139,6 +140,7 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
         ...validated.data,
         brandId: (rawData.brandId as string) || null,
         supplierId: rawData.supplierId as string | undefined || null,
+        keywords,
         image: imagePath,
         isActive: validated.data.isActive ?? true,
         sortOrder: nextSortOrder,
@@ -204,6 +206,8 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
       }
     }
 
+    await rebuildProductSearchText(tx, p.id)
+
     return p
   })
 
@@ -235,6 +239,10 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
   // Handle brandId (can be empty to remove brand)
   const brandIdValue = formData.get('brandId')
   const brandId = brandIdValue && brandIdValue !== '' ? brandIdValue as string : null
+
+  // Handle keywords (can be empty to clear)
+  const keywordsValue = formData.get('keywords')
+  const keywords = keywordsValue !== null ? ((keywordsValue as string).trim() || null) : undefined
 
   const isActive = formData.get('isActive')
   if (isActive !== null) {
@@ -273,7 +281,7 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
     isActive: boolean
     sortOrder: number
     units: Array<{
-      unit: Unit
+      unit: string
       label: string
       labelEn?: string
       piecesPerUnit: number
@@ -310,8 +318,7 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
         sortOrder: result.data.sortOrder ?? i,
         units: result.data.units.map((u, j) => ({
           ...u,
-          unit: u.unit as Unit,
-          isDefault: u.isDefault ?? (j === 0),
+            isDefault: u.isDefault ?? (j === 0),
           sortOrder: u.sortOrder ?? j,
         })),
       })
@@ -331,6 +338,7 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
         ...validated.data,
         supplierId,
         brandId,
+        ...(keywords !== undefined ? { keywords } : {}),
         ...(imagePath ? { image: imagePath } : {}),
       },
     })
@@ -447,6 +455,8 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
         }
       }
     }
+
+    await rebuildProductSearchText(tx, id)
   })
 
   revalidatePath('/admin/products')

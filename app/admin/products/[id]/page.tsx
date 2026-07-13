@@ -3,6 +3,7 @@ import { getProductById } from '@/actions/products'
 import { getCategoryTree } from '@/actions/categories'
 import { getSuppliers } from '@/actions/suppliers'
 import { getBrands } from '@/actions/brands'
+import { getUnitTypes } from '@/actions/unit-types'
 import { EditProductForm } from './EditProductForm'
 
 export default async function EditProductPage({
@@ -11,14 +12,15 @@ export default async function EditProductPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [product, categoryTree, suppliers, brands] = await Promise.all([
+  const [product, categoryTree, suppliers, brands, unitTypes] = await Promise.all([
     getProductById(id),
     getCategoryTree(true),
     getSuppliers({ isActive: true }),
     getBrands({ isActive: true }),
+    getUnitTypes({ isActive: true }),
   ])
 
   if (!product) notFound()
 
-  return <EditProductForm product={product} categoryTree={categoryTree} suppliers={suppliers} brands={brands} />
+  return <EditProductForm product={product} categoryTree={categoryTree} suppliers={suppliers} brands={brands} unitTypes={unitTypes} />
 }

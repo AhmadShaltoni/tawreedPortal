@@ -501,6 +501,7 @@ export const ar = {
     brands: 'الماركات',
     suppliers: 'الموردين',
     categories: 'الأصناف',
+    units: 'وحدات البيع',
     orders: 'الطلبات',
     users: 'المستخدمون',
     notifications: 'الإشعارات',

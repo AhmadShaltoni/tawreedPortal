@@ -18,7 +18,8 @@ import {
   Gift,
   Sparkles,
   Megaphone,
-  Percent
+  Percent,
+  Boxes
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/LanguageContext'
@@ -33,6 +34,7 @@ export function AdminSidebar() {
     { href: '/admin/brands', label: t.admin.brands || 'الماركات', icon: Sparkles },
     { href: '/admin/suppliers', label: t.admin.suppliers || 'الموردين', icon: Truck },
     { href: '/admin/categories', label: t.admin.categories, icon: FolderTree },
+    { href: '/admin/units', label: t.admin.units || 'وحدات البيع', icon: Boxes },
     { href: '/admin/orders', label: t.admin.orders, icon: ShoppingCart },
     { href: '/admin/delivery', label: 'التوصيل', icon: Package2 },
     { href: '/admin/users', label: t.admin.users, icon: Users },

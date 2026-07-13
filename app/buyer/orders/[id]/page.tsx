@@ -94,7 +94,7 @@ export default async function BuyerOrderDetailPage({
                       </div>
                       <div>
                         <p className="text-sm text-gray-500">Quantity</p>
-                        <p className="font-medium">{order.items[0].quantity} {UNIT_LABELS[order.items[0].unit as Unit]}</p>
+                        <p className="font-medium">{order.items[0].quantity} {(UNIT_LABELS[order.items[0].unit as Unit] ?? order.items[0].unitLabel ?? order.items[0].unit)}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">

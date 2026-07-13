@@ -124,7 +124,7 @@ function OrderCard({ order }: { order: Awaited<ReturnType<typeof getBuyerOrders>
               </div>
               {order.items && order.items[0] && (
                 <p className="text-sm text-gray-600 mb-1">
-                  {order.items[0].productName} • {order.items[0].quantity} {UNIT_LABELS[order.items[0].unit as Unit]}
+                  {order.items[0].productName} • {order.items[0].quantity} {(UNIT_LABELS[order.items[0].unit as Unit] ?? order.items[0].unitLabel ?? order.items[0].unit)}
                 </p>
               )}
               {order.supplier && (

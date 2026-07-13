@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { apiResponse, apiError, corsOptions } from '@/lib/api-auth'
 import { calcProductDiscounts, applyDiscount } from '@/lib/discount-engine'
+import { searchProductIds, paginateSearchIds, sortByIdOrder } from '@/lib/search-index'
 
 export async function OPTIONS() {
   return corsOptions()
@@ -19,25 +20,14 @@ export async function GET(request: NextRequest) {
     return apiError('Search query must be at least 2 characters', 400)
   }
 
-  // Use Prisma contains for now; can be upgraded to PostgreSQL FTS later
-  const where = {
-    isActive: true,
-    OR: [
-      { name: { contains: query, mode: 'insensitive' as const } },
-      { nameEn: { contains: query, mode: 'insensitive' as const } },
-      { description: { contains: query, mode: 'insensitive' as const } },
-      { descriptionEn: { contains: query, mode: 'insensitive' as const } },
-      { brand: { name: { contains: query, mode: 'insensitive' as const } } },
-      { brand: { nameEn: { contains: query, mode: 'insensitive' as const } } },
-    ],
-  }
+  // Arabic-aware fuzzy search over normalized searchText (names, brand,
+  // variant sizes, options, keywords) with trigram typo tolerance
+  const rankedIds = await searchProductIds(query)
+  const { pageIds, total } = await paginateSearchIds(rankedIds, { isActive: true }, skip, limit)
 
-  const [products, total] = await Promise.all([
-    db.product.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
+  const products = sortByIdOrder(
+    await db.product.findMany({
+      where: { id: { in: pageIds } },
       select: {
         id: true,
         name: true,
@@ -65,8 +55,8 @@ export async function GET(request: NextRequest) {
         },
       },
     }),
-    db.product.count({ where }),
-  ])
+    pageIds,
+  )
 
   // Apply campaign discounts
   const discountMap = await calcProductDiscounts(

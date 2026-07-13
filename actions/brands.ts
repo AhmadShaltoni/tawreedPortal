@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { requireRole } from '@/lib/auth'
 import { createBrandSchema, updateBrandSchema } from '@/lib/validations'
 import { saveBrandImage, deleteBrandImage } from '@/lib/upload'
+import { rebuildBrandProductsSearchText } from '@/lib/search-index'
 import type { ActionResponse } from '@/types'
 import { revalidatePath } from 'next/cache'
 
@@ -126,6 +127,11 @@ export async function updateBrand(id: string, formData: FormData): Promise<Actio
       ...(logoPath !== undefined && { logo: logoPath }),
     },
   })
+
+  // Brand name is part of each product's searchText
+  if (validated.data.name !== existing.name || validated.data.nameEn !== existing.nameEn) {
+    await rebuildBrandProductsSearchText(id)
+  }
 
   revalidatePath('/admin/brands')
   return { success: true }
