@@ -1406,3 +1406,24 @@ model DiscountCampaignProduct {
   @@id([campaignId, productId])
   @@index([productId])
 }
+
+// App version management for mobile force-update flow
+// One row per platform ("ios" | "android"), managed from the admin dashboard.
+model AppVersionConfig {
+  id            String   @id @default(cuid())
+  platform      String   @unique // "ios" | "android"
+
+  // Below minVersion → force update (blocking modal)
+  minVersion    String   @default("1.0.0")
+  // Below latestVersion (but >= minVersion) → optional update prompt
+  latestVersion String   @default("1.0.0")
+
+  storeUrl      String   @default("")
+  message       String?  @db.VarChar(500) // Custom popup message (Arabic)
+
+  // Kill switch: when false the app never shows update prompts
+  isActive      Boolean  @default(true)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

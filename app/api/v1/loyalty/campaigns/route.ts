@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
-import { getActiveCampaignsWithProgress } from '@/actions/loyalty-campaigns'
+import { getActiveCampaignsForUser } from '@/lib/loyalty-queries'
 import { mapCampaign } from '@/lib/loyalty-dto'
 
 // Handle preflight requests
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   if (!user) return apiError(error ?? 'Unauthorized', 401)
 
   try {
-    const campaigns = await getActiveCampaignsWithProgress()
+    const campaigns = await getActiveCampaignsForUser(user.id)
     return apiResponse({ campaigns: campaigns.map(mapCampaign) })
   } catch (err) {
     console.error('[API] /api/v1/loyalty/campaigns error:', err)

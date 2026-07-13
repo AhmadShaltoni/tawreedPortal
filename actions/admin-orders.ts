@@ -17,17 +17,18 @@ export async function getAdminOrders(options?: {
 }) {
   const { status, search, page = 1, limit = 20 } = options ?? {}
 
-  const where: Record<string, unknown> = {}
-  if (status) where.status = status
+  const searchWhere: Record<string, unknown> = {}
   if (search) {
-    where.OR = [
+    searchWhere.OR = [
       { orderNumber: { contains: search, mode: 'insensitive' } },
       { buyer: { username: { contains: search, mode: 'insensitive' } } },
       { buyer: { storeName: { contains: search, mode: 'insensitive' } } },
     ]
   }
+  const where: Record<string, unknown> = { ...searchWhere }
+  if (status) where.status = status
 
-  const [orders, total] = await Promise.all([
+  const [orders, total, statusGroups] = await Promise.all([
     db.order.findMany({
       where,
       include: {
@@ -39,9 +40,19 @@ export async function getAdminOrders(options?: {
       take: limit,
     }),
     db.order.count({ where }),
+    db.order.groupBy({
+      by: ['status'],
+      _count: { _all: true },
+      where: searchWhere,
+    }),
   ])
 
-  return { orders, total, pages: Math.ceil(total / limit) }
+  const statusCounts: Record<string, number> = {}
+  for (const group of statusGroups) {
+    statusCounts[group.status] = group._count._all
+  }
+
+  return { orders, total, pages: Math.ceil(total / limit), statusCounts }
 }
 
 export async function getAdminOrderById(id: string) {

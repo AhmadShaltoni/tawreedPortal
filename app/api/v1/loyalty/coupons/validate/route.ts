@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
-import { validateCoupon } from '@/actions/loyalty-rewards'
+import { validateCouponForUser } from '@/lib/loyalty-redemption'
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       return apiError('رمز الكوبون ومبلغ الطلب مطلوبان', 400)
     }
 
-    const result = await validateCoupon(couponCode, orderTotal)
+    const result = await validateCouponForUser(user.id, couponCode, orderTotal)
 
     if (!result.success) {
       return apiError(result.error ?? 'كوبون غير صالح', 400)

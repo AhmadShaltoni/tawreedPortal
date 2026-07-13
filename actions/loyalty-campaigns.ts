@@ -3,6 +3,7 @@
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { createAndSendNotification } from '@/lib/push-notifications'
+import { getActiveCampaignsForUser } from '@/lib/loyalty-queries'
 import type { ActionResponse } from '@/types'
 import { revalidatePath } from 'next/cache'
 
@@ -324,23 +325,5 @@ export async function getActiveCampaignsWithProgress() {
     return []
   }
 
-  const now = new Date()
-  const campaigns = await db.loyaltyCampaign.findMany({
-    where: {
-      status: 'ACTIVE',
-      startDate: { lte: now },
-      endDate: { gte: now },
-    },
-    include: {
-      userProgress: {
-        where: { userId: user.id },
-      },
-    },
-    orderBy: { startDate: 'desc' },
-  })
-
-  return campaigns.map((campaign) => ({
-    ...campaign,
-    userProgress: campaign.userProgress[0] || null,
-  }))
+  return getActiveCampaignsForUser(user.id)
 }

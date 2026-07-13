@@ -4,6 +4,12 @@ import { decode } from 'next-auth/jwt'
 
 type UserRole = 'BUYER' | 'SUPPLIER' | 'ADMIN'
 
+interface ApiCityRef {
+  id: string
+  name: string
+  nameEn: string
+}
+
 interface ApiUser {
   id: string
   phone: string
@@ -11,6 +17,14 @@ interface ApiUser {
   username: string
   role: UserRole
   storeName?: string | null
+  // Saved delivery location — returned so mobile clients can restore the
+  // user's location on cold start (via /api/v1/auth/me) without losing it.
+  cityId?: string | null
+  areaId?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  city?: ApiCityRef | null
+  area?: ApiCityRef | null
 }
 
 async function authenticateBearerToken(request: Request): Promise<{ user: ApiUser | null; error: string | null } | null> {
@@ -33,7 +47,21 @@ async function authenticateBearerToken(request: Request): Promise<{ user: ApiUse
     // Fetch user from database
     const user = await db.user.findUnique({
       where: { id: decoded.id as string },
-      select: { id: true, phone: true, email: true, username: true, role: true, storeName: true, isActive: true },
+      select: {
+        id: true,
+        phone: true,
+        email: true,
+        username: true,
+        role: true,
+        storeName: true,
+        isActive: true,
+        cityId: true,
+        areaId: true,
+        latitude: true,
+        longitude: true,
+        cityRef: { select: { id: true, name: true, nameEn: true } },
+        areaRef: { select: { id: true, name: true, nameEn: true } },
+      },
     })
 
     if (!user || !user.isActive) {
@@ -48,6 +76,12 @@ async function authenticateBearerToken(request: Request): Promise<{ user: ApiUse
         username: user.username,
         role: user.role as UserRole,
         storeName: user.storeName,
+        cityId: user.cityId,
+        areaId: user.areaId,
+        latitude: user.latitude,
+        longitude: user.longitude,
+        city: user.cityRef,
+        area: user.areaRef,
       },
       error: null,
     }
@@ -66,6 +100,8 @@ export async function authenticateApiRequest(request: Request): Promise<{ user: 
   // Fall back to session auth for web requests.
   const session = await auth()
   if (session?.user) {
+    // Web (session) requests don't carry saved location on the session object.
+    // The mobile flow uses bearer auth above, which includes location.
     return {
       user: {
         id: session.user.id,
@@ -74,6 +110,12 @@ export async function authenticateApiRequest(request: Request): Promise<{ user: 
         username: session.user.username,
         role: session.user.role,
         storeName: session.user.storeName,
+        cityId: null,
+        areaId: null,
+        latitude: null,
+        longitude: null,
+        city: null,
+        area: null,
       },
       error: null,
     }

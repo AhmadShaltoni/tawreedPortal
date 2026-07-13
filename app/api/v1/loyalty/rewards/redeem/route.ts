@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
-import { redeemReward } from '@/actions/loyalty-rewards'
+import { redeemRewardForUser } from '@/lib/loyalty-redemption'
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       return apiError('معرف المكافأة مطلوب', 400)
     }
 
-    const result = await redeemReward(rewardId)
+    const result = await redeemRewardForUser(user.id, rewardId)
 
     if (!result.success) {
       return apiError(result.error ?? 'فشل في استرداد المكافأة', 400)

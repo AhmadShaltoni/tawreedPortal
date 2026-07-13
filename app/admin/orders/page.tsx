@@ -11,7 +11,7 @@ export default async function AdminOrdersPage({
   const search = params.search
   const page = Number(params.page) || 1
 
-  const { orders, total, pages } = await getAdminOrders({ status, search, page })
+  const { orders, total, pages, statusCounts } = await getAdminOrders({ status, search, page })
 
   return (
     <OrderListClient
@@ -21,6 +21,7 @@ export default async function AdminOrdersPage({
       currentPage={page}
       currentStatus={status}
       currentSearch={search}
+      statusCounts={statusCounts}
     />
   )
 }

@@ -19,7 +19,8 @@ import {
   Sparkles,
   Megaphone,
   Percent,
-  Boxes
+  Boxes,
+  CloudDownload
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLanguage } from '@/lib/LanguageContext'
@@ -45,6 +46,7 @@ export function AdminSidebar() {
     { href: '/admin/marketing-sections', label: t.admin.marketingSections || 'أقسام التسويق', icon: Megaphone },
     { href: '/admin/revenue', label: t.admin.revenue || 'الإيرادات والأرباح', icon: BarChart3 },
     { href: '/admin/loyalty/dashboard', label: t.admin.loyalty || 'نظام الولاء', icon: Gift },
+    { href: '/admin/app-version', label: 'تحديثات التطبيق', icon: CloudDownload },
   ]
 
   return (
