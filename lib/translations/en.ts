@@ -537,6 +537,17 @@ export const en: TranslationKeys = {
     totalCategories: 'Total Categories',
   },
 
+  zakat: {
+    totalZakat: 'Total Zakat',
+    ofWhichProfit: 'of which profit',
+    itemsSold: 'Items sold',
+    perItem: 'piastre/item',
+    lastReset: 'Last reset',
+    markPaid: 'Mark paid',
+    confirmReset: 'Confirm reset',
+    zakatNote: 'Zakat accrues one piastre per item sold in delivered orders, and resets when paid.',
+  },
+
   autoTranslate: {
     unavailable: 'Auto-translation is currently unavailable due to a connection issue. You can continue entering data manually.',
     retryTranslate: 'Translate',
@@ -731,6 +742,24 @@ export const en: TranslationKeys = {
     orderProfit: 'Order Profit',
     totalRevenueForPeriod: 'Total Revenue for Selected Period',
     totalProfitForPeriod: 'Total Profit for Selected Period',
+    deliveredNote: 'Delivered orders only',
+    byProduct: 'Profit by Product',
+    productProfitTitle: 'Profit & Loss by Product',
+    product: 'Product',
+    quantitySold: 'Qty Sold',
+    revenue: 'Revenue',
+    cost: 'Cost',
+    profit: 'Profit',
+    margin: 'Margin',
+    filterAll: 'All',
+    filterTopProfit: 'Top Profit',
+    filterLowProfit: 'Lowest Profit',
+    filterLoss: 'Losses',
+    noCostData: 'Missing wholesale cost data for some units',
+    loss: 'Loss',
+    noProducts: 'No products sold in this period',
+    totalProducts: 'Products',
+    bestSeller: 'Best Seller',
   },
 
   notificationManagement: {

@@ -86,7 +86,16 @@ export function RevenueReportClient() {
           <ArrowRight className={`w-5 h-5 ${dir === 'rtl' ? '' : 'rotate-180'}`} />
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">{tr.title || 'تقرير الإيرادات والأرباح'}</h1>
+        <Link
+          href="/admin/revenue/products"
+          className={`text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 px-4 py-2 rounded-lg transition-colors ${dir === 'rtl' ? 'mr-auto' : 'ml-auto'}`}
+        >
+          {tr.byProduct || 'الأرباح حسب المنتج'} →
+        </Link>
       </div>
+
+      <p className="text-sm text-gray-400">{tr.deliveredNote || 'تُحتسب الطلبات المُسلَّمة فقط'}</p>
+
 
       {/* Date Filter */}
       <Card>

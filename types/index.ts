@@ -519,8 +519,30 @@ export interface AdminDashboardStats {
   activeOrders: number
   completedOrders: number
   totalRevenue: number
+  totalProfit: number
   totalBuyers: number
   totalCategories: number
+}
+
+// Zakat fund summary shown on the admin dashboard
+export interface ZakatSummary {
+  itemsSold: number        // Total units sold since last reset (DELIVERED orders)
+  zakatAmount: number      // Accumulated zakat in JOD (itemsSold × piastresPerItem / 100)
+  piastresPerItem: number  // Piastres charged per item sold
+  lastResetAt: string      // ISO date of the last counter reset
+}
+
+// Per-product profit/loss row for the profits report
+export interface ProductProfitRow {
+  productId: string
+  productName: string
+  productImage: string | null
+  quantitySold: number     // Total units sold
+  revenue: number          // Total revenue (JOD)
+  cost: number             // Total wholesale cost (JOD) for items with cost data
+  profit: number           // revenue portion − cost (JOD)
+  margin: number           // Profit margin percentage
+  missingCostData: boolean // True if some sold items have no wholesale price
 }
 
 // UI types

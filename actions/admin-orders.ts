@@ -6,7 +6,7 @@ import { updateOrderStatusSchema } from '@/lib/validations'
 import { createAndSendNotification } from '@/lib/push-notifications'
 import { awardOrderPoints, reverseOrderPoints, awardWelcomeBonus, processReferralRewards } from './loyalty-points'
 import { updateUserCampaignProgress } from './loyalty-campaigns'
-import type { ActionResponse, AdminDashboardStats } from '@/types'
+import type { ActionResponse, AdminDashboardStats, ProductProfitRow } from '@/types'
 import { revalidatePath } from 'next/cache'
 
 export async function getAdminOrders(options?: {
@@ -183,6 +183,22 @@ export async function updateAdminOrderStatus(formData: FormData): Promise<Action
   return { success: true }
 }
 
+// Locate the wholesale (cost) price for a sold order item by matching the
+// snapshot unit code against the product's units across its variants.
+// Returns null when no cost data is available for that item.
+function findItemWholesalePrice(item: {
+  unit: string
+  product: { variants: { units: { unit: string; wholesalePrice: number | null }[] }[] } | null
+}): number | null {
+  if (!item.product?.variants) return null
+  for (const variant of item.product.variants) {
+    for (const pu of variant.units) {
+      if (pu.unit === item.unit) return pu.wholesalePrice
+    }
+  }
+  return null
+}
+
 export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
   const [
     totalProducts,
@@ -192,6 +208,7 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
     activeOrders,
     completedOrders,
     revenueResult,
+    deliveredItems,
     totalBuyers,
     totalCategories,
   ] = await Promise.all([
@@ -201,10 +218,35 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
     db.order.count({ where: { status: 'PENDING' } }),
     db.order.count({ where: { status: { in: ['CONFIRMED', 'PROCESSING', 'SHIPPED'] } } }),
     db.order.count({ where: { status: 'DELIVERED' } }),
-    db.order.aggregate({ _sum: { totalPrice: true }, where: { status: { not: 'CANCELLED' } } }),
+    // Revenue counts DELIVERED orders only
+    db.order.aggregate({ _sum: { totalPrice: true }, where: { status: 'DELIVERED' } }),
+    // Delivered items with their product cost data for profit calculation
+    db.orderItem.findMany({
+      where: { isReward: false, order: { status: 'DELIVERED' } },
+      select: {
+        unit: true,
+        quantity: true,
+        pricePerUnit: true,
+        product: {
+          select: {
+            variants: { select: { units: { select: { unit: true, wholesalePrice: true } } } },
+          },
+        },
+      },
+    }),
     db.user.count({ where: { role: 'BUYER' } }),
     db.category.count({ where: { isActive: true } }),
   ])
+
+  const totalRevenue = revenueResult._sum.totalPrice ?? 0
+
+  let totalProfit = 0
+  for (const item of deliveredItems) {
+    const wholesale = findItemWholesalePrice(item)
+    if (wholesale != null && wholesale > 0) {
+      totalProfit += (item.pricePerUnit - wholesale) * item.quantity
+    }
+  }
 
   return {
     totalProducts,
@@ -213,7 +255,8 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
     pendingOrders,
     activeOrders,
     completedOrders,
-    totalRevenue: revenueResult._sum.totalPrice ?? 0,
+    totalRevenue,
+    totalProfit,
     totalBuyers,
     totalCategories,
   }
@@ -234,7 +277,7 @@ export async function getRevenueReportData(options: {
   const orders = await db.order.findMany({
     where: {
       createdAt: { gte: from, lte: to },
-      status: { not: 'CANCELLED' },
+      status: 'DELIVERED',
     },
     include: {
       buyer: { select: { username: true, storeName: true } },
@@ -258,21 +301,8 @@ export async function getRevenueReportData(options: {
     let orderProfit = 0
 
     for (const item of order.items) {
-      let wholesalePrice: number | null = null
-
-      // Try to find the matching ProductUnit's wholesalePrice
-      if (item.product?.variants) {
-        for (const variant of item.product.variants) {
-          for (const pu of variant.units) {
-            if (pu.unit === item.unit) {
-              wholesalePrice = pu.wholesalePrice
-              break
-            }
-          }
-          if (wholesalePrice !== null) break
-        }
-      }
-
+      if (item.isReward) continue
+      const wholesalePrice = findItemWholesalePrice(item)
       if (wholesalePrice != null && wholesalePrice > 0) {
         orderProfit += (item.pricePerUnit - wholesalePrice) * item.quantity
       }
@@ -294,4 +324,86 @@ export async function getRevenueReportData(options: {
   const totalProfit = ordersWithProfit.reduce((sum, o) => sum + o.profit, 0)
 
   return { orders: ordersWithProfit, totalRevenue, totalProfit }
+}
+
+// Per-product profit / loss breakdown across DELIVERED orders. Optionally
+// scoped to a date range. Powers the "الأرباح حسب المنتج" report page.
+export async function getProductProfitReport(options?: {
+  from?: string
+  to?: string
+}): Promise<ProductProfitRow[]> {
+  const { authorized, error } = await requireRole(['ADMIN'])
+  if (!authorized) throw new Error(error ?? 'Not authorized')
+
+  const orderWhere: Record<string, unknown> = { status: 'DELIVERED' }
+  if (options?.from || options?.to) {
+    const createdAt: Record<string, Date> = {}
+    if (options.from) createdAt.gte = new Date(options.from)
+    if (options.to) {
+      const to = new Date(options.to)
+      to.setHours(23, 59, 59, 999)
+      createdAt.lte = to
+    }
+    orderWhere.createdAt = createdAt
+  }
+
+  const items = await db.orderItem.findMany({
+    where: { isReward: false, order: orderWhere },
+    select: {
+      productId: true,
+      productName: true,
+      productImage: true,
+      unit: true,
+      quantity: true,
+      pricePerUnit: true,
+      totalPrice: true,
+      product: {
+        select: {
+          image: true,
+          variants: { select: { units: { select: { unit: true, wholesalePrice: true } } } },
+        },
+      },
+    },
+  })
+
+  const map = new Map<string, ProductProfitRow>()
+
+  for (const item of items) {
+    const key = item.productId ?? `name:${item.productName}`
+    const revenue = item.totalPrice ?? item.pricePerUnit * item.quantity
+    const wholesale = findItemWholesalePrice(item)
+    const hasCost = wholesale != null && wholesale > 0
+    const cost = hasCost ? wholesale * item.quantity : 0
+    const profit = hasCost ? (item.pricePerUnit - wholesale) * item.quantity : 0
+
+    const existing = map.get(key)
+    if (existing) {
+      existing.quantitySold += item.quantity
+      existing.revenue += revenue
+      existing.cost += cost
+      existing.profit += profit
+      if (!hasCost) existing.missingCostData = true
+    } else {
+      map.set(key, {
+        productId: item.productId ?? key,
+        productName: item.productName,
+        productImage: item.product?.image ?? item.productImage ?? null,
+        quantitySold: item.quantity,
+        revenue,
+        cost,
+        profit,
+        margin: 0,
+        missingCostData: !hasCost,
+      })
+    }
+  }
+
+  const rows = Array.from(map.values())
+  for (const row of rows) {
+    row.margin = row.revenue > 0 ? (row.profit / row.revenue) * 100 : 0
+  }
+
+  // Default sort: highest profit first
+  rows.sort((a, b) => b.profit - a.profit)
+  return rows
 }

@@ -1,15 +1,19 @@
 'use client'
 
+import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Package, FolderTree, ShoppingCart, Users, DollarSign, TrendingUp } from 'lucide-react'
+import { Package, FolderTree, ShoppingCart, Users, DollarSign, TrendingUp, Loader2 } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { useLanguage } from '@/lib/LanguageContext'
-import type { AdminDashboardStats } from '@/types'
+import type { AdminDashboardStats, ZakatSummary } from '@/types'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { resetZakatCounter } from '@/actions/zakat'
 
 interface Props {
   stats: AdminDashboardStats
+  zakat: ZakatSummary
   recentOrders: Array<{
     id: string
     orderNumber: string
@@ -20,8 +24,20 @@ interface Props {
   }>
 }
 
-export function AdminDashboardClient({ stats, recentOrders }: Props) {
+export function AdminDashboardClient({ stats, zakat, recentOrders }: Props) {
   const { t, dir } = useLanguage()
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [confirmingZakat, setConfirmingZakat] = useState(false)
+  const tz = t.zakat || ({} as Record<string, string>)
+
+  function handleZakatPaid() {
+    startTransition(async () => {
+      await resetZakatCounter()
+      setConfirmingZakat(false)
+      router.refresh()
+    })
+  }
 
   const statCards = [
     { label: t.adminStats.totalProducts, value: stats.totalProducts, icon: Package, color: 'bg-blue-500' },
@@ -54,6 +70,11 @@ export function AdminDashboardClient({ stats, recentOrders }: Props) {
                   <div className={dir === 'rtl' ? 'text-right' : ''}>
                     <p className="text-sm text-gray-500">{stat.label}</p>
                     <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                    {isRevenue && (
+                      <p className="text-sm font-medium text-green-600 mt-0.5">
+                        {tz.ofWhichProfit || 'منها ربح'}: {formatCurrency(stats.totalProfit)}
+                      </p>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -67,7 +88,63 @@ export function AdminDashboardClient({ stats, recentOrders }: Props) {
             cardElement
           )
         })}
+
+        {/* Zakat Fund Card */}
+        <Card className="border-emerald-200 bg-emerald-50/40">
+          <CardContent className="p-4">
+            <div className={`flex items-center gap-4 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+              <div className="p-3 rounded-lg bg-emerald-600 flex items-center justify-center">
+                <span className="text-2xl">🤲</span>
+              </div>
+              <div className={`flex-1 ${dir === 'rtl' ? 'text-right' : ''}`}>
+                <p className="text-sm text-gray-500">{tz.totalZakat || 'إجمالي الزكاة'}</p>
+                <p className="text-2xl font-bold text-emerald-700">{formatCurrency(zakat.zakatAmount)}</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {(tz.itemsSold || 'أصناف مباعة')}: {zakat.itemsSold.toLocaleString('ar-JO')}
+                  {' · '}
+                  {(tz.perItem || 'قرش/صنف')}: {zakat.piastresPerItem}
+                </p>
+              </div>
+            </div>
+            <div className={`mt-3 flex items-center justify-between gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+              <span className="text-xs text-gray-400">
+                {(tz.lastReset || 'آخر تصفير')}: {formatDate(zakat.lastResetAt)}
+              </span>
+              {confirmingZakat ? (
+                <div className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                  <button
+                    type="button"
+                    onClick={handleZakatPaid}
+                    disabled={isPending}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    {isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+                    {tz.confirmReset || 'تأكيد التصفير'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingZakat(false)}
+                    disabled={isPending}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50"
+                  >
+                    {t.common?.cancel || 'إلغاء'}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingZakat(true)}
+                  disabled={zakat.zakatAmount <= 0}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {tz.markPaid || 'تم الدفع'}
+                </button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

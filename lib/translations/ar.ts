@@ -527,6 +527,17 @@ export const ar = {
     totalCategories: 'إجمالي الأصناف',
   },
 
+  zakat: {
+    totalZakat: 'إجمالي الزكاة',
+    ofWhichProfit: 'منها ربح',
+    itemsSold: 'أصناف مباعة',
+    perItem: 'قرش/صنف',
+    lastReset: 'آخر تصفير',
+    markPaid: 'تم الدفع',
+    confirmReset: 'تأكيد التصفير',
+    zakatNote: 'تُحتسب الزكاة قرشاً واحداً عن كل صنف يُباع في الطلبات المُسلَّمة، وتُصفَّر عند الدفع.',
+  },
+
   autoTranslate: {
     unavailable: 'الترجمة التلقائية غير متاحة حالياً بسبب مشكلة في الاتصال. يمكنك متابعة الإدخال يدوياً.',
     retryTranslate: 'ترجمة',
@@ -722,6 +733,24 @@ export const ar = {
     orderProfit: 'إجمالي الربح للطلب',
     totalRevenueForPeriod: 'إجمالي الإيرادات للفترة المحددة',
     totalProfitForPeriod: 'إجمالي الربح للفترة المحددة',
+    deliveredNote: 'تُحتسب الطلبات المُسلَّمة فقط',
+    byProduct: 'الأرباح حسب المنتج',
+    productProfitTitle: 'الأرباح والخسائر حسب المنتج',
+    product: 'المنتج',
+    quantitySold: 'الكمية المباعة',
+    revenue: 'الإيراد',
+    cost: 'التكلفة',
+    profit: 'الربح',
+    margin: 'نسبة الربح',
+    filterAll: 'الكل',
+    filterTopProfit: 'الأعلى ربحاً',
+    filterLowProfit: 'الأقل ربحاً',
+    filterLoss: 'الخسائر',
+    noCostData: 'لا توجد بيانات تكلفة (سعر جملة) لبعض الوحدات',
+    loss: 'خسارة',
+    noProducts: 'لا توجد منتجات مباعة في هذه الفترة',
+    totalProducts: 'عدد المنتجات',
+    bestSeller: 'الأكثر مبيعاً',
   },
 
   notificationManagement: {

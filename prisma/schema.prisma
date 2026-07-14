@@ -1441,3 +1441,33 @@ model AppVersionConfig {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
+
+// ============================================
+// ZAKAT FUND (charity counter)
+// ============================================
+
+// Global zakat configuration (singleton).
+// Accumulates a fixed amount of piastres for every item (unit) sold in
+// DELIVERED orders. The counter is measured from `lastResetAt`; pressing
+// "تم الدفع" (payment done) moves `lastResetAt` to now so accumulation
+// starts over.
+model ZakatConfig {
+  id               String   @id @default(cuid())
+  piastresPerItem  Int      @default(1)   // Piastres (قرش) charged per item sold
+  lastResetAt      DateTime @default(now()) // Zakat accumulates from this moment
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// History of zakat payments (each time the counter is reset).
+model ZakatPayment {
+  id          String   @id @default(cuid())
+  amount      Float    // Amount paid (JOD)
+  itemsCount  Int      // Number of items counted for this payment
+  periodFrom  DateTime // Previous reset point
+  periodTo    DateTime // Payment/reset moment
+  note        String?  // Optional admin note
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
