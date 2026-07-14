@@ -9,14 +9,42 @@ interface DiscountCodeType {
   id: string
   code: string
   discountPercent: number
+  maxDiscountCap: number | null
   isSingleUse: boolean
+  maxUsagePerUser: number | null
   maxUsage: number | null
   minOrderAmount: number | null
+  firstOrderOnly: boolean
+  allowStacking: boolean
+  allowedUserId: string | null
   startDate: Date | null
   endDate: Date | null
   isActive: boolean
   createdAt: Date
   updatedAt: Date
+}
+
+/** Reads all coupon fields (old + new) out of the admin form's FormData. */
+function parseCouponFormData(formData: FormData) {
+  const maxUsagePerUser = formData.get('maxUsagePerUser')
+  return {
+    code: formData.get('code'),
+    discountPercent: formData.get('discountPercent'),
+    maxDiscountCap: formData.get('maxDiscountCap') || null,
+    // Keep the legacy flag in sync: per-user limit of 1 == single use
+    isSingleUse: maxUsagePerUser === '1',
+    maxUsagePerUser: maxUsagePerUser || null,
+    maxUsage: formData.get('maxUsage') || null,
+    minOrderAmount: formData.get('minOrderAmount') || null,
+    firstOrderOnly: formData.get('firstOrderOnly') === 'true',
+    allowStacking: formData.get('allowStacking') !== 'false',
+    allowedUserId: (formData.get('allowedUserId') as string) || null,
+    categoryIds: formData.getAll('categoryIds').map(String).filter(Boolean),
+    productIds: formData.getAll('productIds').map(String).filter(Boolean),
+    startDate: formData.get('startDate') || null,
+    endDate: formData.get('endDate') || null,
+    isActive: formData.get('isActive') !== 'false',
+  }
 }
 
 /**
@@ -31,18 +59,7 @@ export async function createDiscountCode(
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
-    const data = {
-      code: formData.get('code'),
-      discountPercent: formData.get('discountPercent'),
-      isSingleUse: formData.get('isSingleUse') === 'true',
-      maxUsage: formData.get('maxUsage') || null,
-      minOrderAmount: formData.get('minOrderAmount') || null,
-      startDate: formData.get('startDate') || null,
-      endDate: formData.get('endDate') || null,
-      isActive: formData.get('isActive') !== 'false',
-    }
-
-    const validated = createDiscountCodeSchema.safeParse(data)
+    const validated = createDiscountCodeSchema.safeParse(parseCouponFormData(formData))
     if (!validated.success) {
       return {
         success: false,
@@ -62,9 +79,16 @@ export async function createDiscountCode(
       data: {
         code: validated.data.code,
         discountPercent: validated.data.discountPercent,
+        maxDiscountCap: validated.data.maxDiscountCap ?? null,
         isSingleUse: validated.data.isSingleUse,
+        maxUsagePerUser: validated.data.maxUsagePerUser ?? null,
         maxUsage: validated.data.maxUsage ?? null,
         minOrderAmount: validated.data.minOrderAmount ?? null,
+        firstOrderOnly: validated.data.firstOrderOnly,
+        allowStacking: validated.data.allowStacking,
+        allowedUserId: validated.data.allowedUserId,
+        categories: { connect: validated.data.categoryIds.map((id) => ({ id })) },
+        products: { connect: validated.data.productIds.map((id) => ({ id })) },
         startDate: validated.data.startDate,
         endDate: validated.data.endDate,
         isActive: validated.data.isActive,
@@ -91,18 +115,7 @@ export async function updateDiscountCode(
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
-    const data = {
-      code: formData.get('code'),
-      discountPercent: formData.get('discountPercent'),
-      isSingleUse: formData.get('isSingleUse') === 'true',
-      maxUsage: formData.get('maxUsage') || null,
-      minOrderAmount: formData.get('minOrderAmount') || null,
-      startDate: formData.get('startDate') || null,
-      endDate: formData.get('endDate') || null,
-      isActive: formData.get('isActive') !== 'false',
-    }
-
-    const validated = createDiscountCodeSchema.safeParse(data)
+    const validated = createDiscountCodeSchema.safeParse(parseCouponFormData(formData))
     if (!validated.success) {
       return {
         success: false,
@@ -126,9 +139,16 @@ export async function updateDiscountCode(
       data: {
         code: validated.data.code,
         discountPercent: validated.data.discountPercent,
+        maxDiscountCap: validated.data.maxDiscountCap ?? null,
         isSingleUse: validated.data.isSingleUse,
+        maxUsagePerUser: validated.data.maxUsagePerUser ?? null,
         maxUsage: validated.data.maxUsage ?? null,
         minOrderAmount: validated.data.minOrderAmount ?? null,
+        firstOrderOnly: validated.data.firstOrderOnly,
+        allowStacking: validated.data.allowStacking,
+        allowedUserId: validated.data.allowedUserId,
+        categories: { set: validated.data.categoryIds.map((cid) => ({ id: cid })) },
+        products: { set: validated.data.productIds.map((pid) => ({ id: pid })) },
         startDate: validated.data.startDate,
         endDate: validated.data.endDate,
         isActive: validated.data.isActive,
@@ -189,6 +209,9 @@ export async function getDiscountCodeById(
           orderBy: { createdAt: 'desc' },
         },
         _count: { select: { usages: true } },
+        allowedUser: { select: { id: true, username: true, phone: true, storeName: true } },
+        categories: { select: { id: true, name: true } },
+        products: { select: { id: true, name: true } },
       },
     })
 
@@ -253,6 +276,118 @@ export async function deleteDiscountCode(
       return { success: false, error: 'كود الخصم غير موجود' }
     }
     return { success: false, error: 'فشل في حذف كود الخصم' }
+  }
+}
+
+/** Minimal user info for the "restrict to user" picker in coupon forms */
+export interface CouponUserOption {
+  id: string
+  username: string
+  phone: string
+  storeName: string | null
+}
+
+/**
+ * Search users by name / phone / store name for coupon targeting (admin only)
+ */
+export async function searchCouponUsers(
+  query: string
+): Promise<ActionResponse<CouponUserOption[]>> {
+  try {
+    const user = await getCurrentUser()
+    if (!user || user.role !== 'ADMIN') {
+      return { success: false, error: 'غير مصرح بالدخول' }
+    }
+
+    const q = query.trim()
+    if (q.length < 2) {
+      return { success: true, data: [] }
+    }
+
+    const users = await db.user.findMany({
+      where: {
+        role: 'BUYER',
+        OR: [
+          { username: { contains: q, mode: 'insensitive' } },
+          { phone: { contains: q } },
+          { storeName: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, username: true, phone: true, storeName: true },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    })
+
+    return { success: true, data: users }
+  } catch (error) {
+    console.error('[discount-codes.searchUsers]', error)
+    return { success: false, error: 'فشل في البحث عن المستخدمين' }
+  }
+}
+
+/** Minimal product info for the coupon product-scope picker */
+export interface CouponProductOption {
+  id: string
+  name: string
+}
+
+/**
+ * Search products by name for coupon scoping (admin only)
+ */
+export async function searchCouponProducts(
+  query: string
+): Promise<ActionResponse<CouponProductOption[]>> {
+  try {
+    const user = await getCurrentUser()
+    if (!user || user.role !== 'ADMIN') {
+      return { success: false, error: 'غير مصرح بالدخول' }
+    }
+
+    const q = query.trim()
+    if (q.length < 2) {
+      return { success: true, data: [] }
+    }
+
+    const products = await db.product.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { name: { contains: q, mode: 'insensitive' } },
+          { nameEn: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+      take: 15,
+    })
+
+    return { success: true, data: products }
+  } catch (error) {
+    console.error('[discount-codes.searchProducts]', error)
+    return { success: false, error: 'فشل في البحث عن المنتجات' }
+  }
+}
+
+/** Active categories for the coupon category-scope picker (admin only) */
+export async function getCouponCategoryOptions(): Promise<
+  ActionResponse<{ id: string; name: string }[]>
+> {
+  try {
+    const user = await getCurrentUser()
+    if (!user || user.role !== 'ADMIN') {
+      return { success: false, error: 'غير مصرح بالدخول' }
+    }
+
+    const categories = await db.category.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+      orderBy: { sortOrder: 'asc' },
+    })
+
+    return { success: true, data: categories }
+  } catch (error) {
+    console.error('[discount-codes.getCategories]', error)
+    return { success: false, error: 'فشل في جلب الفئات' }
   }
 }
 

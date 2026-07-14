@@ -48,7 +48,7 @@ export async function deleteAccount(userId: string): Promise<ActionResponse> {
       const singleUseUsages = await tx.discountCodeUsage.findMany({
         where: {
           userId: user.id,
-          discountCode: { isSingleUse: true },
+          discountCode: { OR: [{ isSingleUse: true }, { maxUsagePerUser: 1 }] },
         },
         select: { discountCodeId: true },
       })

@@ -222,9 +222,16 @@ export const createDiscountCodeSchema = z.object({
   discountPercent: z.coerce.number()
     .min(1, 'نسبة الخصم يجب أن تكون 1% على الأقل')
     .max(100, 'نسبة الخصم لا يمكن أن تتجاوز 100%'),
+  maxDiscountCap: z.coerce.number().positive('سقف الخصم يجب أن يكون رقم موجب').optional().nullable(),
   isSingleUse: z.coerce.boolean().default(false),
+  maxUsagePerUser: z.coerce.number().int().positive('حد الاستخدام لكل مستخدم يجب أن يكون رقم موجب').optional().nullable(),
   maxUsage: z.coerce.number().int().positive('حد الاستخدام يجب أن يكون رقم موجب').optional().nullable(),
   minOrderAmount: z.coerce.number().positive('الحد الأدنى للطلب يجب أن يكون رقم موجب').optional().nullable(),
+  firstOrderOnly: z.coerce.boolean().default(false),
+  allowStacking: z.coerce.boolean().default(true),
+  allowedUserId: z.string().optional().nullable().transform((val) => val || null),
+  categoryIds: z.array(z.string()).default([]),
+  productIds: z.array(z.string()).default([]),
   startDate: z.string().optional().nullable().transform((val) => val ? new Date(val) : null),
   endDate: z.string().optional().nullable().transform((val) => val ? new Date(val) : null),
   isActive: z.coerce.boolean().default(true),
@@ -232,13 +239,8 @@ export const createDiscountCodeSchema = z.object({
 
 export const validateDiscountCodeSchema = z.object({
   code: z.string().min(1, 'كود الخصم مطلوب'),
-  orderTotal: z.coerce.number().positive('مبلغ الطلب يجب أن يكون موجب'),
-})
-
-export const confirmDiscountCodeSchema = z.object({
-  code: z.string().min(1, 'كود الخصم مطلوب'),
-  orderId: z.string().min(1, 'رقم الطلب مطلوب'),
-  orderTotal: z.coerce.number().positive('مبلغ الطلب يجب أن يكون موجب'),
+  orderTotal: z.coerce.number().positive('مبلغ الطلب يجب أن يكون موجب').optional(),
+  hasLoyaltyCoupon: z.coerce.boolean().optional(),
 })
 
 // Brand validations

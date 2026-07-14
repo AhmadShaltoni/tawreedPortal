@@ -103,11 +103,43 @@ export async function updateAdminOrderStatus(formData: FormData): Promise<Action
     },
   })
 
-  // Notify buyer with push notification
+  // Notify buyer with push notification — friendly copy, no raw IDs or
+  // English status enums (the notification already deep-links to the order)
+  const statusCopy: Record<string, { title: string; message: string }> = {
+    PENDING: {
+      title: 'تم استلام طلبك',
+      message: 'طلبك قيد المراجعة وسنؤكده قريبًا',
+    },
+    CONFIRMED: {
+      title: 'تم تأكيد طلبك ✅',
+      message: 'تم تأكيد طلبك وسنبدأ بتجهيزه قريبًا',
+    },
+    PROCESSING: {
+      title: 'جاري تجهيز طلبك 📦',
+      message: 'فريقنا يجهّز طلبك الآن',
+    },
+    SHIPPED: {
+      title: 'طلبك في الطريق إليك 🚚',
+      message: 'انطلق مندوبنا بطلبك، سيصلك قريبًا',
+    },
+    DELIVERED: {
+      title: 'تم توصيل طلبك 🎉',
+      message: 'نتمنى أن تنال منتجاتك إعجابك، شكرًا لتسوقك من توريد',
+    },
+    CANCELLED: {
+      title: 'تم إلغاء طلبك',
+      message: 'تم إلغاء طلبك. لأي استفسار تواصل معنا',
+    },
+  }
+  const copy = statusCopy[validated.data.status] ?? {
+    title: 'تحديث حالة الطلب',
+    message: 'تم تحديث حالة طلبك، اضغط لعرض التفاصيل',
+  }
+
   await createAndSendNotification(order.buyerId, {
     type: 'ORDER_STATUS_CHANGE',
-    title: 'تحديث حالة الطلب',
-    message: `تم تحديث حالة طلبك #${order.orderNumber} إلى ${validated.data.status}`,
+    title: copy.title,
+    message: copy.message,
     linkUrl: `/orders/${order.id}`,
     data: {
       orderId: order.id,

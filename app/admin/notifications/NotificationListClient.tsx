@@ -15,6 +15,7 @@ interface Notification {
   title: string
   message: string
   linkUrl?: string | null
+  data?: { targetType?: string; targetId?: string; targetLabel?: string } | null
   isRead: boolean
   isSent: boolean
   createdAt: Date
@@ -113,6 +114,15 @@ export function NotificationListClient({
     return notificationTypes.find((t) => t.value === type)?.label || type
   }
 
+  const targetTypeLabels: Record<string, string> = {
+    PRODUCT: 'منتج',
+    CATEGORY: 'تصنيف',
+    BRAND: 'ماركة',
+    COLLECTION: 'قسم تسويقي',
+    ORDER: 'طلب',
+    URL: 'رابط خارجي',
+  }
+
   const statusColor = (type: string) => {
     const colors: Record<string, string> = {
       NEW_ORDER: 'bg-blue-100 text-blue-800',
@@ -191,6 +201,9 @@ export function NotificationListClient({
                     النوع
                   </th>
                   <th className={`px-6 py-3 text-sm font-semibold text-gray-700 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
+                    الوجهة
+                  </th>
+                  <th className={`px-6 py-3 text-sm font-semibold text-gray-700 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
                     المستقبل
                   </th>
                   <th className={`px-6 py-3 text-sm font-semibold text-gray-700 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
@@ -221,6 +234,22 @@ export function NotificationListClient({
                       <Badge variant="default" className={statusColor(notification.type)}>
                         {typeLabel(notification.type)}
                       </Badge>
+                    </td>
+                    <td className="px-6 py-3 text-sm">
+                      {notification.data?.targetType ? (
+                        <div>
+                          <Badge className="bg-indigo-100 text-indigo-800">
+                            {targetTypeLabels[notification.data.targetType] || notification.data.targetType}
+                          </Badge>
+                          {notification.data.targetLabel && (
+                            <div className="text-xs text-gray-500 mt-1 truncate max-w-[10rem]">
+                              {notification.data.targetLabel}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">بدون</span>
+                      )}
                     </td>
                     <td className="px-6 py-3 text-sm">
                       <div className="font-medium text-gray-900">

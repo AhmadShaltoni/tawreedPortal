@@ -6,7 +6,13 @@ import { sendPushToRole } from '@/lib/push-notifications'
 import { calculateDeliveryFee } from '@/actions/delivery'
 import { calcProductDiscounts, applyDiscount } from '@/lib/discount-engine'
 import { awardOrderPoints } from '@/actions/loyalty-points'
-import type { DiscountCode, RedeemedReward } from '@prisma/client'
+import {
+  findDiscountCode,
+  validateDiscountCodeForUser,
+  recordDiscountUsageInTx,
+  type DiscountCodeWithScope,
+} from '@/lib/discount-codes'
+import type { RedeemedReward } from '@prisma/client'
 
 class OrderValidationError extends Error {
   status: number
@@ -179,49 +185,39 @@ export async function POST(request: NextRequest) {
     return sum + effectivePrice * item.quantity
   }, 0)
 
-  // Validate coupon code if provided
-  let discountCode: (DiscountCode & { _count: { usages: number } }) | null = null
+  // Validate coupon code if provided (shared logic with /api/v1/coupons/validate)
+  let discountCode: DiscountCodeWithScope | null = null
   let discountAmount = 0
   let finalPrice = totalPrice
 
   if (validated.data.couponCode) {
-    const couponCodeStr = validated.data.couponCode.toUpperCase()
-
-    discountCode = await db.discountCode.findFirst({
-      where: { code: { equals: couponCodeStr, mode: 'insensitive' } },
-      include: { _count: { select: { usages: true } } },
-    })
-
+    discountCode = await findDiscountCode(validated.data.couponCode)
     if (!discountCode) {
       return apiError('كود الخصم غير موجود', 400)
     }
-    if (!discountCode.isActive) {
-      return apiError('كود الخصم غير مفعل', 400)
+
+    const couponResult = await validateDiscountCodeForUser(discountCode, {
+      userId: user.id,
+      userPhone: user.phone,
+      orderTotal: totalPrice,
+      cartLines: cartItems.map((item) => {
+        const originalUnitPrice = item.variantOption?.priceOverride ?? item.productUnit?.price ?? 0
+        const campaignDiscount = campaignDiscountMap.get(item.variant.product.id) || 0
+        const effectivePrice = campaignDiscount > 0 ? applyDiscount(originalUnitPrice, campaignDiscount) : originalUnitPrice
+        return {
+          productId: item.variant.product.id,
+          categoryId: item.variant.product.categoryId,
+          lineTotal: effectivePrice * item.quantity,
+        }
+      }),
+      hasLoyaltyCoupon: !!validated.data.loyaltyCouponCode,
+    })
+
+    if (!couponResult.ok) {
+      return apiError(couponResult.message, 400)
     }
 
-    const now = new Date()
-    if (discountCode.startDate && now < discountCode.startDate) {
-      return apiError('كود الخصم لم يبدأ بعد', 400)
-    }
-    if (discountCode.endDate && now > discountCode.endDate) {
-      return apiError('كود الخصم منتهي الصلاحية', 400)
-    }
-    if (discountCode.maxUsage !== null && discountCode._count.usages >= discountCode.maxUsage) {
-      return apiError('تم الوصول للحد الأقصى لاستخدام هذا الكود', 400)
-    }
-    if (discountCode.isSingleUse) {
-      const existingUsage = await db.discountCodeUsage.findFirst({
-        where: { discountCodeId: discountCode.id, userId: user.id },
-      })
-      if (existingUsage) {
-        return apiError('لقد استخدمت هذا الكود من قبل', 400)
-      }
-    }
-    if (discountCode.minOrderAmount !== null && totalPrice < discountCode.minOrderAmount) {
-      return apiError(`قيمة الطلب أقل من الحد الأدنى المطلوب (${discountCode.minOrderAmount} د.أ)`, 400)
-    }
-
-    discountAmount = Math.round((totalPrice * discountCode.discountPercent / 100) * 100) / 100
+    discountAmount = couponResult.discountAmount
     finalPrice = Math.round((totalPrice - discountAmount) * 100) / 100
   }
 
@@ -446,17 +442,23 @@ export async function POST(request: NextRequest) {
       // Clear cart
       await tx.cartItem.deleteMany({ where: { buyerId: user.id } })
 
-      // Record coupon usage if coupon was applied
+      // Record coupon usage if coupon was applied.
+      // Locks the code row and re-verifies limits inside the transaction so
+      // two concurrent checkouts can't both consume a single-use/limited code.
       if (discountCode) {
-        await tx.discountCodeUsage.create({
-          data: {
-            discountCodeId: discountCode.id,
+        try {
+          await recordDiscountUsageInTx(tx, {
+            code: discountCode,
             userId: user.id,
             orderId: newOrder.id,
             discountAmount,
             orderTotal: totalPrice,
-          },
-        })
+          })
+        } catch (usageErr) {
+          throw new OrderValidationError(
+            usageErr instanceof Error ? usageErr.message : 'فشل في تسجيل استخدام كود الخصم'
+          )
+        }
       }
 
       // Notify admins

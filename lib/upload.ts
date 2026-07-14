@@ -100,3 +100,8 @@ export async function deleteCollectionImage(imagePath: string): Promise<void> {
     await deleteFromCloudinary(imagePath)
   }
 }
+
+// ============ NOTIFICATION IMAGES ============
+export async function saveNotificationImage(file: File): Promise<string> {
+  return uploadToCloudinary(file, 'notifications')
+}

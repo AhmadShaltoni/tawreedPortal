@@ -3,7 +3,47 @@
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { sendPushToUser, sendPushToAll, sendPushToRole, getPushStats, cleanupStaleTokens } from '@/lib/push-notifications'
+import { saveNotificationImage } from '@/lib/upload'
 import type { UserRole } from '@prisma/client'
+
+export type NotificationTargetType =
+  | 'PRODUCT'
+  | 'CATEGORY'
+  | 'BRAND'
+  | 'COLLECTION'
+  | 'ORDER'
+  | 'URL'
+  | 'NONE'
+
+/**
+ * Builds the app-navigable path for a given target. `targetId` holds the
+ * collection's slug (not its id) for COLLECTION targets, matching the
+ * mobile route param at /marketing-section/[slug].
+ */
+function buildLinkUrl(
+  targetType: string | null,
+  targetId: string | null,
+  rawUrl: string | null
+): string | null {
+  if (!targetType || targetType === 'NONE') return null
+  if (targetType === 'URL') return rawUrl?.trim() || null
+  if (!targetId) return null
+
+  switch (targetType) {
+    case 'PRODUCT':
+      return `/products/${targetId}`
+    case 'ORDER':
+      return `/orders/${targetId}`
+    case 'CATEGORY':
+      return `/categories/${targetId}`
+    case 'BRAND':
+      return `/brands/${targetId}`
+    case 'COLLECTION':
+      return `/marketing-section/${targetId}`
+    default:
+      return null
+  }
+}
 
 export interface ActionResponse<T = unknown> {
   success: boolean
@@ -166,15 +206,30 @@ export async function sendNotification(formData: FormData): Promise<ActionRespon
 
     const title = formData.get('title') as string
     const message = formData.get('message') as string
-    const linkUrl = formData.get('linkUrl') as string | null
+    const rawUrlInput = formData.get('linkUrl') as string | null
     const imageUrl = formData.get('imageUrl') as string | null
     const recipientType = formData.get('recipientType') as string // 'all' | 'buyers' | 'suppliers' | 'specific'
     const specificUserId = formData.get('specificUserId') as string | null
+    const targetType = (formData.get('targetType') as string | null) || 'NONE'
+    const targetId = formData.get('targetId') as string | null
+    const targetLabel = formData.get('targetLabel') as string | null
+
+    const linkUrl = buildLinkUrl(targetType, targetId, rawUrlInput)
+    const notificationData =
+      targetType && targetType !== 'NONE'
+        ? {
+            targetType,
+            ...(targetId ? { targetId } : {}),
+            ...(targetLabel ? { targetLabel } : {}),
+          }
+        : undefined
 
     console.log('[Push] sendNotification requested', {
       adminUserId: user.id,
       recipientType,
       specificUserId: specificUserId || undefined,
+      targetType,
+      targetId: targetId || undefined,
       hasLinkUrl: Boolean(linkUrl),
       hasImageUrl: Boolean(imageUrl),
       titleLength: title?.length || 0,
@@ -241,6 +296,7 @@ export async function sendNotification(formData: FormData): Promise<ActionRespon
         message,
         linkUrl: linkUrl || null,
         imageUrl: imageUrl || null,
+        data: notificationData,
         isGlobal: recipientType === 'all',
         isSent: false,
       })),
@@ -259,6 +315,8 @@ export async function sendNotification(formData: FormData): Promise<ActionRespon
       data: {
         type: 'SYSTEM',
         ...(linkUrl ? { linkUrl } : {}),
+        ...(targetType && targetType !== 'NONE' ? { targetType } : {}),
+        ...(targetId ? { targetId } : {}),
       },
     }
 
@@ -377,6 +435,163 @@ export async function searchUsers(
   } catch (error) {
     console.error('Error searching users:', error)
     return { success: false, error: 'Failed to search users' }
+  }
+}
+
+export interface NotificationTargetOption {
+  id: string
+  label: string
+  subLabel?: string
+  image?: string
+  meta?: string
+}
+
+/**
+ * Search for notification destination targets (products/categories/brands/collections)
+ * used by the "target picker" in the compose form.
+ */
+export async function searchNotificationTargets(
+  targetType: 'PRODUCT' | 'CATEGORY' | 'BRAND' | 'COLLECTION',
+  query: string
+): Promise<ActionResponse<{ items: NotificationTargetOption[] }>> {
+  try {
+    const user = await getCurrentUser()
+    if (!user || user.role !== 'ADMIN') {
+      return { success: false, error: 'Unauthorized' }
+    }
+
+    const q = query.trim()
+    const textFilter = q
+      ? {
+          OR: [
+            { name: { contains: q, mode: 'insensitive' as const } },
+            { nameEn: { contains: q, mode: 'insensitive' as const } },
+          ],
+        }
+      : {}
+
+    if (targetType === 'PRODUCT') {
+      // Return the whole active catalog (newest first) — the client filters
+      // locally with Arabic normalization, so search stays instant and robust.
+      const products = await db.product.findMany({
+        where: { isActive: true, ...textFilter },
+        select: { id: true, name: true, nameEn: true, image: true },
+        orderBy: { createdAt: 'desc' },
+        take: 2000,
+      })
+      return {
+        success: true,
+        data: {
+          items: products.map((p) => ({
+            id: p.id,
+            label: p.name,
+            subLabel: p.nameEn || undefined,
+            image: p.image || undefined,
+          })),
+        },
+      }
+    }
+
+    if (targetType === 'CATEGORY') {
+      const categories = await db.category.findMany({
+        where: { isActive: true, ...textFilter },
+        select: { id: true, name: true, nameEn: true, depth: true },
+        orderBy: { sortOrder: 'asc' },
+        take: 200,
+      })
+      return {
+        success: true,
+        data: {
+          items: categories.map((c) => ({
+            id: c.id,
+            label: `${'— '.repeat(c.depth)}${c.name}`,
+            subLabel: c.nameEn || undefined,
+          })),
+        },
+      }
+    }
+
+    if (targetType === 'BRAND') {
+      const brands = await db.brand.findMany({
+        where: { isActive: true, ...textFilter },
+        select: { id: true, name: true, nameEn: true, logo: true },
+        orderBy: { sortOrder: 'asc' },
+        take: 200,
+      })
+      return {
+        success: true,
+        data: {
+          items: brands.map((b) => ({
+            id: b.id,
+            label: b.name,
+            subLabel: b.nameEn || undefined,
+            image: b.logo || undefined,
+          })),
+        },
+      }
+    }
+
+    if (targetType === 'COLLECTION') {
+      const collections = await db.collection.findMany({
+        where: { isActive: true, ...textFilter },
+        select: {
+          name: true,
+          nameEn: true,
+          slug: true,
+          type: true,
+          image: true,
+        },
+        orderBy: { sortOrder: 'asc' },
+        take: 200,
+      })
+      return {
+        success: true,
+        data: {
+          // `id` here is the collection SLUG (not its cuid) — it's what gets
+          // stored as targetId and matches the mobile /marketing-section/[slug] route.
+          items: collections.map((c) => ({
+            id: c.slug,
+            label: c.name,
+            subLabel: c.nameEn || undefined,
+            image: c.image || undefined,
+            meta: c.type,
+          })),
+        },
+      }
+    }
+
+    return { success: false, error: 'Invalid target type' }
+  } catch (error) {
+    console.error('Error searching notification targets:', error)
+    return { success: false, error: 'Failed to search targets' }
+  }
+}
+
+/**
+ * Upload an image for a notification (Cloudinary), used by the compose form.
+ */
+export async function uploadNotificationImage(
+  formData: FormData
+): Promise<ActionResponse<{ url: string }>> {
+  try {
+    const user = await getCurrentUser()
+    if (!user || user.role !== 'ADMIN') {
+      return { success: false, error: 'Unauthorized' }
+    }
+
+    const file = formData.get('file')
+    if (!file || !(file instanceof File)) {
+      return { success: false, error: 'No file provided' }
+    }
+
+    const url = await saveNotificationImage(file)
+    return { success: true, data: { url } }
+  } catch (error) {
+    console.error('Error uploading notification image:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to upload image',
+    }
   }
 }
 

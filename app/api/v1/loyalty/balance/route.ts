@@ -14,13 +14,14 @@ export async function GET(request: NextRequest) {
   if (!user) return apiError(error ?? 'Unauthorized', 401)
 
   try {
-    const [balance, recentTransactions] = await Promise.all([
+    const [balance, recentTransactions, config] = await Promise.all([
       db.loyaltyBalance.findUnique({ where: { userId: user.id } }),
       db.loyaltyTransaction.findMany({
         where: { userId: user.id },
         orderBy: { createdAt: 'desc' },
         take: 5,
       }),
+      db.loyaltyConfig.findFirst(),
     ])
 
     return apiResponse({
@@ -28,6 +29,16 @@ export async function GET(request: NextRequest) {
       totalEarned: balance?.totalEarned ?? 0,
       totalRedeemed: balance?.totalRedeemed ?? 0,
       recentTransactions: recentTransactions.map(mapTransaction),
+      // Public earn settings so the app can forecast points before checkout
+      earnConfig: {
+        isEnabled: config?.isEnabled ?? false,
+        pointsPerJod: config?.pointsPerJod ?? 0,
+        calculationBase: config?.calculationBase ?? 1,
+        minOrderValue: config?.minOrderValue ?? null,
+        excludeDeliveryFees: config?.excludeDeliveryFees ?? true,
+        roundingMode: config?.roundingMode ?? 'FLOOR',
+        earnTrigger: config?.earnTrigger ?? 'ORDER_PLACED',
+      },
     })
   } catch (err) {
     console.error('[API] /api/v1/loyalty/balance error:', err)

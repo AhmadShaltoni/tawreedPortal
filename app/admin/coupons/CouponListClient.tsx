@@ -13,9 +13,14 @@ interface CouponWithStats {
   id: string
   code: string
   discountPercent: number
+  maxDiscountCap: number | null
   isSingleUse: boolean
+  maxUsagePerUser: number | null
   maxUsage: number | null
   minOrderAmount: number | null
+  firstOrderOnly: boolean
+  allowStacking: boolean
+  allowedUserId: string | null
   startDate: Date | string | null
   endDate: Date | string | null
   isActive: boolean
@@ -107,13 +112,29 @@ export default function CouponListClient({ initialCoupons }: CouponListClientPro
                   <Badge variant={status === 'active' ? 'default' : status === 'expired' ? 'error' : 'warning'}>
                     {status === 'active' ? 'نشط' : status === 'expired' ? 'منتهي' : 'معطل'}
                   </Badge>
-                  {coupon.isSingleUse && (
+                  {(coupon.isSingleUse || coupon.maxUsagePerUser === 1) ? (
                     <Badge variant="info">استخدام لمرة واحدة</Badge>
+                  ) : coupon.maxUsagePerUser ? (
+                    <Badge variant="info">{coupon.maxUsagePerUser} مرات لكل مستخدم</Badge>
+                  ) : null}
+                  {coupon.firstOrderOnly && (
+                    <Badge variant="info">الطلب الأول فقط</Badge>
+                  )}
+                  {coupon.allowedUserId && (
+                    <Badge variant="warning">مستخدم محدد</Badge>
+                  )}
+                  {!coupon.allowStacking && (
+                    <Badge variant="warning">بدون دمج مع المكافآت</Badge>
                   )}
                 </div>
 
                 <div className="text-2xl font-bold text-green-600 mb-3">
                   {coupon.discountPercent}% خصم
+                  {coupon.maxDiscountCap != null && (
+                    <span className="text-sm font-medium text-gray-500 mr-2">
+                      (بحد أقصى {coupon.maxDiscountCap} د.أ)
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">

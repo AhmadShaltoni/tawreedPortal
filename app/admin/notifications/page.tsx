@@ -7,16 +7,19 @@ import { NotificationListClient } from './NotificationListClient'
 export default async function NotificationsPage({
   searchParams,
 }: {
-  searchParams: { page?: string; type?: string; unread?: string }
+  searchParams: Promise<{ page?: string; type?: string; unread?: string }>
 }) {
-  const page = Number(searchParams.page) || 1
-  const type = searchParams.type || undefined
-  const unread = searchParams.unread === 'true'
+  const params = await searchParams
+  const page = Number(params.page) || 1
+  const type = params.type || undefined
+  const unread = params.unread === 'true'
 
   const [notificationsResult, statsResult] = await Promise.all([
     getNotifications(page, 20, {
       type: type,
-      unread: unread,
+      // Only filter when explicitly requested — passing `false` would mean
+      // "read only" in the action (where.isRead = !unread) and hide everything.
+      unread: unread || undefined,
     }),
     getNotificationStats(),
   ])

@@ -186,6 +186,7 @@ model User {
   cartItems     CartItem[]
   deviceTokens  DeviceToken[]   // Multiple devices per user
   discountCodeUsages DiscountCodeUsage[]
+  allowedDiscountCodes DiscountCode[] @relation("UserAllowedDiscountCodes") // Codes restricted to this user
   
   // Relations - Loyalty system
   loyaltyBalance         LoyaltyBalance?
@@ -426,6 +427,7 @@ model Category {
   productCategories ProductOnCategory[]  // Many-to-many product classification
   tags        Tag[]                // Filter tabs within this category
   discountCampaigns DiscountCampaign[] // Discount campaigns targeting this category
+  discountCodes DiscountCode[]     @relation("DiscountCodeCategories") // Coupon codes scoped to this category
   
   @@index([sortOrder])
   @@index([isActive])
@@ -614,6 +616,7 @@ model Product {
   tags            ProductTag[]          // Filter tags
   discountCampaigns DiscountCampaignProduct[] // Discount campaigns targeting this product
   loyaltyRewards  LoyaltyReward[]       // Loyalty rewards offering this product as a prize
+  discountCodes   DiscountCode[]        @relation("DiscountCodeProducts") // Coupon codes scoped to this product
   
   @@index([categoryId])
   @@index([brandId])
@@ -881,27 +884,38 @@ model DiscountCode {
   // Core fields
   code            String    @unique  // Stored uppercase (e.g. ISTKLAL2026, SBA)
   discountPercent Float              // Percentage (e.g. 15 = 15%)
-  
+  maxDiscountCap  Float?             // Max discount amount in JOD (null = no cap)
+
   // Usage rules
-  isSingleUse     Boolean   @default(false)  // Each user can use only once
+  isSingleUse     Boolean   @default(false)  // Each user can use only once (legacy; equals maxUsagePerUser = 1)
+  maxUsagePerUser Int?               // Max uses per user (null = unlimited)
   maxUsage        Int?               // Max total uses across all users (null = unlimited)
   minOrderAmount  Float?             // Min order total for code to be valid (JOD)
-  
+  firstOrderOnly  Boolean   @default(false)  // Valid only on the user's first (non-cancelled) order
+  allowStacking   Boolean   @default(true)   // Can be combined with a loyalty reward coupon in the same order
+
+  // Targeting
+  allowedUserId   String?            // Restrict code to one specific user (null = everyone)
+  allowedUser     User?     @relation("UserAllowedDiscountCodes", fields: [allowedUserId], references: [id], onDelete: SetNull)
+  categories      Category[] @relation("DiscountCodeCategories") // Scope: only these categories are discounted (empty = whole order)
+  products        Product[]  @relation("DiscountCodeProducts")   // Scope: only these products are discounted (empty = whole order)
+
   // Date range
   startDate       DateTime?          // When code becomes active (null = immediately)
   endDate         DateTime?          // When code expires (null = no expiry)
-  
+
   // Status
   isActive        Boolean   @default(true)
-  
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  
+
   // Relations
   usages          DiscountCodeUsage[]
-  
+
   @@index([code])
   @@index([isActive])
+  @@index([allowedUserId])
 }
 
 // Tracks each use of a discount code

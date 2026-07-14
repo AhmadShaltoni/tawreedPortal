@@ -1,7 +1,10 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
-import { hashPhone } from '@/lib/account/phone-hash'
+import {
+  findDiscountCode,
+  getCartLinesForDiscount,
+  validateDiscountCodeForUser,
+} from '@/lib/discount-codes'
 
 export async function OPTIONS() {
   return corsOptions()
@@ -9,16 +12,13 @@ export async function OPTIONS() {
 
 /**
  * POST /api/v1/coupons/validate
- * Validate a discount code against order total
- * Body: { code: string, orderTotal: number }
- * 
- * Validation order:
- * 1. Code exists
- * 2. Code is active
- * 3. Current date within start/end range
- * 4. Total usage < maxUsage
- * 5. User hasn't used (if isSingleUse)
- * 6. Order total >= minOrderAmount
+ * Validate a discount code against the user's current cart.
+ * Body: { code: string, orderTotal?: number, hasLoyaltyCoupon?: boolean }
+ *
+ * The order total is computed server-side from the cart (with campaign
+ * discounts applied) so it always matches order creation. The client's
+ * orderTotal is only a fallback for older app versions with an empty-cart
+ * edge case.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -28,21 +28,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { code, orderTotal } = body
+    const { code, orderTotal, hasLoyaltyCoupon } = body
 
     if (!code || typeof code !== 'string') {
       return apiError('كود الخصم مطلوب', 400)
     }
-    if (!orderTotal || typeof orderTotal !== 'number' || orderTotal <= 0) {
-      return apiError('مبلغ الطلب يجب أن يكون موجب', 400)
-    }
 
-    // 1. Code exists (case-insensitive)
-    const discountCode = await db.discountCode.findFirst({
-      where: { code: { equals: code.toUpperCase(), mode: 'insensitive' } },
-      include: { _count: { select: { usages: true } } },
-    })
-
+    const discountCode = await findDiscountCode(code)
     if (!discountCode) {
       return apiResponse({
         valid: false,
@@ -51,97 +43,40 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 2. Code is active
-    if (!discountCode.isActive) {
+    const cartLines = await getCartLinesForDiscount(user.id)
+    let serverTotal = Math.round(cartLines.reduce((sum, line) => sum + line.lineTotal, 0) * 100) / 100
+    if (serverTotal <= 0) {
+      serverTotal = typeof orderTotal === 'number' && orderTotal > 0 ? orderTotal : 0
+    }
+    if (serverTotal <= 0) {
+      return apiError('السلة فارغة', 400)
+    }
+
+    const result = await validateDiscountCodeForUser(discountCode, {
+      userId: user.id,
+      userPhone: user.phone,
+      orderTotal: serverTotal,
+      cartLines,
+      hasLoyaltyCoupon: hasLoyaltyCoupon === true,
+    })
+
+    if (!result.ok) {
       return apiResponse({
         valid: false,
-        error: 'CODE_INACTIVE',
-        message: 'كود الخصم غير مفعل',
+        error: result.errorCode,
+        message: result.message,
       })
     }
 
-    // 3. Current date within start/end range
-    const now = new Date()
-    if (discountCode.startDate && now < discountCode.startDate) {
-      return apiResponse({
-        valid: false,
-        error: 'CODE_NOT_STARTED',
-        message: 'كود الخصم لم يبدأ بعد',
-      })
-    }
-    if (discountCode.endDate && now > discountCode.endDate) {
-      return apiResponse({
-        valid: false,
-        error: 'CODE_EXPIRED',
-        message: 'كود الخصم منتهي الصلاحية',
-      })
-    }
-
-    // 4. Total usage < maxUsage
-    if (discountCode.maxUsage !== null && discountCode._count.usages >= discountCode.maxUsage) {
-      return apiResponse({
-        valid: false,
-        error: 'CODE_USAGE_LIMIT_REACHED',
-        message: 'تم الوصول للحد الأقصى لاستخدام هذا الكود',
-      })
-    }
-
-    // 5. User hasn't used (if isSingleUse)
-    if (discountCode.isSingleUse) {
-      const existingUsage = await db.discountCodeUsage.findFirst({
-        where: {
-          discountCodeId: discountCode.id,
-          userId: user.id,
-        },
-      })
-      if (existingUsage) {
-        return apiResponse({
-          valid: false,
-          error: 'CODE_ALREADY_USED',
-          message: 'لقد استخدمت هذا الكود من قبل',
-        })
-      }
-
-      // Also block reuse by a previously deleted account with the same phone
-      const phoneHash = hashPhone(user.phone)
-      if (phoneHash) {
-        const deletedUsage = await db.deletedUserCouponUsage.findUnique({
-          where: {
-            phoneNumberHash_discountCodeId: {
-              phoneNumberHash: phoneHash,
-              discountCodeId: discountCode.id,
-            },
-          },
-        })
-        if (deletedUsage) {
-          return apiResponse({
-            valid: false,
-            error: 'CODE_ALREADY_USED',
-            message: 'لقد قمت باستخدام هذا الكوبون مسبقاً.',
-          })
-        }
-      }
-    }
-
-    // 6. Order total >= minOrderAmount
-    if (discountCode.minOrderAmount !== null && orderTotal < discountCode.minOrderAmount) {
-      return apiResponse({
-        valid: false,
-        error: 'ORDER_BELOW_MINIMUM',
-        message: `قيمة الطلب أقل من الحد الأدنى المطلوب (${discountCode.minOrderAmount} د.أ)`,
-      })
-    }
-
-    // All checks passed — calculate discount
-    const discountAmount = Math.round((orderTotal * discountCode.discountPercent / 100) * 100) / 100
-    const finalTotal = Math.round((orderTotal - discountAmount) * 100) / 100
+    const finalTotal = Math.round((serverTotal - result.discountAmount) * 100) / 100
 
     return apiResponse({
       valid: true,
       discountPercent: discountCode.discountPercent,
-      discountAmount,
+      discountAmount: result.discountAmount,
       finalTotal,
       code: discountCode.code,
+      allowStacking: discountCode.allowStacking,
     })
   } catch (error) {
     console.error('[api/v1/coupons/validate] POST error:', error)

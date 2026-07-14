@@ -429,9 +429,14 @@ export interface DiscountCode {
   id: string
   code: string
   discountPercent: number
+  maxDiscountCap: number | null
   isSingleUse: boolean
+  maxUsagePerUser: number | null
   maxUsage: number | null
   minOrderAmount: number | null
+  firstOrderOnly: boolean
+  allowStacking: boolean
+  allowedUserId: string | null
   startDate: Date | null
   endDate: Date | null
   isActive: boolean
@@ -456,6 +461,9 @@ export type DiscountCodeWithStats = DiscountCode & {
 export type DiscountCodeWithUsages = DiscountCode & {
   usages: (DiscountCodeUsage & { user: Pick<User, 'id' | 'username' | 'phone'> })[]
   _count: { usages: number }
+  allowedUser: { id: string; username: string; phone: string; storeName: string | null } | null
+  categories: { id: string; name: string }[]
+  products: { id: string; name: string }[]
 }
 
 export interface DiscountCodeUsageUser {
