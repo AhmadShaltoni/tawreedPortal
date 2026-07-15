@@ -24,6 +24,9 @@ export async function GET(
       items: {
         include: { product: { select: { id: true, name: true, nameEn: true, image: true } } },
       },
+      redeemedReward: {
+        include: { reward: { select: { id: true, name: true, nameEn: true } } },
+      },
     },
   })
 
@@ -66,7 +69,19 @@ export async function GET(
     isReward: item.isReward,
   }))
 
-  return apiResponse({ 
+  // Loyalty reward applied to this order (for "reward used" banner)
+  const redeemedReward = order.redeemedReward
+    ? {
+        rewardName: order.redeemedReward.reward?.name ?? null,
+        rewardNameEn: order.redeemedReward.reward?.nameEn ?? null,
+        rewardType: order.redeemedReward.rewardType,
+        couponCode: order.redeemedReward.couponCode,
+        productName: order.redeemedReward.productName,
+        productNameEn: order.redeemedReward.productNameEn,
+      }
+    : null
+
+  return apiResponse({
     order: {
       ...order,
       items: formattedItems,
@@ -74,6 +89,7 @@ export async function GET(
       buyerNotes: order.buyerNotes,
       notes: order.buyerNotes,
       statusHistory: order.statusHistory,
+      redeemedReward,
     }
   })
 }
