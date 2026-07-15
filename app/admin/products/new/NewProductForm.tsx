@@ -12,7 +12,8 @@ import { useLanguage } from '@/lib/LanguageContext'
 import { createProduct } from '@/actions/products'
 import { useAutoTranslate } from '@/lib/useAutoTranslate'
 import { getTagsByCategory } from '@/actions/tags'
-import { compressImage } from '@/lib/compress-image'
+import { resolveProductImages } from '@/lib/upload-image-client'
+import { loadDraft, clearDraft, useDraftAutosave, stripVariantFiles, hydrateVariant, type ProductDraft } from '@/lib/useProductDraft'
 import { ImageLightbox } from '@/components/ui/ImageLightbox'
 import { VariantsEditor, createDefaultVariant, type VariantEntry, type UnitTypeOption } from '@/components/admin/VariantsEditor'
 
@@ -79,15 +80,102 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
   
   // Variants
   const [variants, setVariants] = useState<VariantEntry[]>(() => [createDefaultVariant(true, unitTypes)])
-  
+
+  // Main image (managed in state for preview + upload resilience)
+  const [mainImageFile, setMainImageFile] = useState<File | null>(null)
+  const [mainImagePreview, setMainImagePreview] = useState<string | null>(null)
+
+  // Upload progress ({ done, total } while uploading images)
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
+
   // Refs
   const nameEnRef = useRef<HTMLInputElement>(null)
   const descEnRef = useRef<HTMLTextAreaElement>(null)
   const nameArRef = useRef<HTMLInputElement>(null)
   const descArRef = useRef<HTMLTextAreaElement>(null)
+  const keywordsRef = useRef<HTMLTextAreaElement>(null)
   const translate = useAutoTranslate()
 
+  // ---- Draft persistence (localStorage) ----
+  const DRAFT_KEY = 'new'
+  const [pendingDraft, setPendingDraft] = useState<ProductDraft | null>(null)
+  const [autosaveOn, setAutosaveOn] = useState(false)
+  const [draftTick, setDraftTick] = useState(0)
+  const bumpDraft = () => setDraftTick((n) => n + 1)
+
+  // On mount: offer to restore an unsaved draft, or enable autosave immediately.
+  useEffect(() => {
+    const draft = loadDraft<ProductDraft>(DRAFT_KEY)
+    if (draft) setPendingDraft(draft)
+    else setAutosaveOn(true)
+  }, [])
+
+  // Autosave whenever the user changes anything (once the restore prompt is resolved).
+  useDraftAutosave<ProductDraft>(DRAFT_KEY, buildDraftSnapshot(), autosaveOn, draftTick)
+
+  function buildDraftSnapshot(): ProductDraft {
+    return {
+      name: nameArRef.current?.value ?? '',
+      nameEn: nameEnRef.current?.value ?? '',
+      description: descArRef.current?.value ?? '',
+      descriptionEn: descEnRef.current?.value ?? '',
+      keywords: keywordsRef.current?.value ?? '',
+      selectedPath,
+      additionalCategoryIds,
+      selectedBrandId,
+      selectedSupplierId,
+      selectedCollectionIds,
+      selectedTagIds,
+      // Strip File/blob previews — keep only already-uploaded URLs.
+      variants: variants.map((v) => stripVariantFiles(v)),
+      mainImageUrl: mainImagePreview && !mainImageFile ? mainImagePreview : null,
+    }
+  }
+
+  function restoreDraft(draft: ProductDraft) {
+    if (nameArRef.current) nameArRef.current.value = draft.name
+    if (nameEnRef.current) nameEnRef.current.value = draft.nameEn
+    if (descArRef.current) descArRef.current.value = draft.description
+    if (descEnRef.current) descEnRef.current.value = draft.descriptionEn
+    if (keywordsRef.current) keywordsRef.current.value = draft.keywords
+    setSelectedPath(draft.selectedPath)
+    setAdditionalCategoryIds(draft.additionalCategoryIds)
+    setSelectedBrandId(draft.selectedBrandId)
+    setSelectedSupplierId(draft.selectedSupplierId)
+    setSelectedCollectionIds(draft.selectedCollectionIds)
+    setSelectedTagIds(draft.selectedTagIds)
+    if (draft.variants.length) setVariants(draft.variants.map((v) => hydrateVariant(v, unitTypes)))
+    if (draft.mainImageUrl) setMainImagePreview(draft.mainImageUrl)
+    setPendingDraft(null)
+    setAutosaveOn(true)
+  }
+
+  function discardDraft() {
+    clearDraft(DRAFT_KEY)
+    setPendingDraft(null)
+    setAutosaveOn(true)
+  }
+
   const finalCategoryId = selectedPath.length > 0 ? selectedPath[selectedPath.length - 1] : ''
+
+  // Re-run autosave whenever structured selections/variants change.
+  useEffect(() => {
+    if (autosaveOn) bumpDraft()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPath, additionalCategoryIds, selectedBrandId, selectedSupplierId, selectedCollectionIds, selectedTagIds, variants, mainImagePreview])
+
+  // Revoke object URL when the main image preview changes/unmounts.
+  useEffect(() => {
+    return () => {
+      if (mainImagePreview && mainImagePreview.startsWith('blob:')) URL.revokeObjectURL(mainImagePreview)
+    }
+  }, [mainImagePreview])
+
+  function handleMainImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] || null
+    setMainImageFile(file)
+    setMainImagePreview(file ? URL.createObjectURL(file) : null)
+  }
 
   // Load tags when category changes
   useEffect(() => {
@@ -217,38 +305,77 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
     })
     formData.set('variantOptions', JSON.stringify(variantOptionsMap))
 
-    // Attach option image files
-    variants.forEach((v, vi) => {
-      if (v.imageFile) {
-        formData.set(`variantImage_${vi}`, v.imageFile)
+    // The raw file input isn't used anymore; images go up via the API below.
+    formData.delete('image')
+
+    try {
+      // 1) Upload every image individually to Cloudinary (small, retried
+      //    requests) and collect the resulting URLs. No image bytes travel
+      //    through the Server Action, so the body-size limit is never hit.
+      const resolved = await resolveProductImages(
+        {
+          mainImageFile,
+          mainImageExisting: !mainImageFile && mainImagePreview ? mainImagePreview : null,
+          variants: variants.map((v, vi) => ({
+            imageFile: v.imageFile,
+            existingImage: v.existingImage,
+            label: v.size || `الحجم ${vi + 1}`,
+            options: v.options.map((o, oi) => ({
+              imageFile: o.imageFile,
+              existingImage: o.existingImage,
+              label: o.name || `خيار ${oi + 1}`,
+            })),
+          })),
+        },
+        (done, total) => setUploadProgress({ done, total }),
+      )
+      setUploadProgress(null)
+
+      // 2) Persist uploaded URLs into state so a later retry never re-uploads.
+      applyUploadedImages(resolved)
+
+      // 3) Send only the URLs (small JSON) to the save action.
+      if (resolved.mainImageUrl) formData.set('image', resolved.mainImageUrl)
+      formData.set('variantImageUrls', JSON.stringify(resolved.variantImageUrls))
+      formData.set('optionImageUrls', JSON.stringify(resolved.optionImageUrls))
+
+      const result = await createProduct(formData)
+
+      if (result.success) {
+        clearDraft(DRAFT_KEY)
+        router.push('/admin/products')
+      } else {
+        setError(result.error || 'تعذّر حفظ المنتج، حاول مجدداً')
+        setFieldErrors(result.errors || {})
+        setIsSubmitting(false)
       }
-      v.options.forEach((o, oi) => {
-        if (o.imageFile) {
-          formData.set(`optionImage_${vi}_${oi}`, o.imageFile)
-        }
-      })
-    })
-
-    // Compress all images before upload
-    const mainImage = formData.get('image')
-    if (mainImage && mainImage instanceof File && mainImage.size > 0) {
-      formData.set('image', await compressImage(mainImage))
-    }
-    for (const [key, value] of Array.from(formData.entries())) {
-      if ((key.startsWith('variantImage_') || key.startsWith('optionImage_')) && value instanceof File) {
-        formData.set(key, await compressImage(value))
-      }
-    }
-
-    const result = await createProduct(formData)
-
-    if (result.success) {
-      router.push('/admin/products')
-    } else {
-      setError(result.error || null)
-      setFieldErrors(result.errors || {})
+    } catch (err) {
+      setUploadProgress(null)
+      setError(err instanceof Error ? err.message : 'فشل رفع الصور، تحقق من الاتصال وحاول مجدداً')
       setIsSubmitting(false)
     }
+  }
+
+  /** Move newly-uploaded URLs into state (existingImage) so retries skip re-upload. */
+  function applyUploadedImages(resolved: { mainImageUrl: string | null; variantImageUrls: Record<string, string>; optionImageUrls: Record<string, string> }) {
+    if (resolved.mainImageUrl) {
+      setMainImageFile(null)
+      setMainImagePreview(resolved.mainImageUrl)
+    }
+    setVariants((prev) =>
+      prev.map((v, vi) => ({
+        ...v,
+        imageFile: null,
+        existingImage: resolved.variantImageUrls[`variantImage_${vi}`] ?? v.existingImage,
+        imagePreview: resolved.variantImageUrls[`variantImage_${vi}`] ?? v.imagePreview,
+        options: v.options.map((o, oi) => ({
+          ...o,
+          imageFile: null,
+          existingImage: resolved.optionImageUrls[`optionImage_${vi}_${oi}`] ?? o.existingImage,
+          imagePreview: resolved.optionImageUrls[`optionImage_${vi}_${oi}`] ?? o.imagePreview,
+        })),
+      })),
+    )
   }
 
   return (
@@ -260,11 +387,33 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
         <h1 className="text-2xl font-bold text-gray-900">{t.productManagement.addProduct}</h1>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>
+      {pendingDraft && (
+        <div className={`flex items-center justify-between gap-4 bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg ${dir === 'rtl' ? 'flex-row-reverse text-right' : ''}`}>
+          <span className="text-sm">لديك مسودة غير محفوظة من جلسة سابقة. هل تريد استعادتها؟</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button type="button" onClick={() => restoreDraft(pendingDraft)} className="text-sm font-semibold bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">استعادة</button>
+            <button type="button" onClick={discardDraft} className="text-sm text-blue-700 hover:text-blue-900 px-2">تجاهل</button>
+          </div>
+        </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg whitespace-pre-line">{error}</div>
+      )}
+
+      {uploadProgress && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg">
+          <div className={`flex items-center justify-between text-sm mb-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+            <span>جارٍ رفع الصور…</span>
+            <span>{uploadProgress.done} / {uploadProgress.total}</span>
+          </div>
+          <div className="h-2 bg-blue-100 rounded-full overflow-hidden">
+            <div className="h-full bg-blue-600 transition-all" style={{ width: `${uploadProgress.total ? (uploadProgress.done / uploadProgress.total) * 100 : 0}%` }} />
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} onInput={() => { if (autosaveOn) bumpDraft() }} className="space-y-6">
         {/* Basic Information */}
         <Card>
           <CardHeader>
@@ -297,6 +446,7 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
             </div>
 
             <Textarea
+              ref={keywordsRef}
               label="كلمات البحث (مرادفات، لهجات، أخطاء شائعة)"
               name="keywords"
               placeholder="مثال: بندورة، طماطم، شوكلاته، شوكولا — يفصل بينها بفاصلة أو مسافة"
@@ -305,7 +455,10 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{t.productManagement.image}</label>
-              <input type="file" name="image" accept="image/jpeg,image/png,image/webp" className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+              {mainImagePreview && (
+                <img src={mainImagePreview} alt="" className="w-20 h-20 rounded-lg object-cover mb-2 border border-gray-200" />
+              )}
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleMainImageChange} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
             </div>
           </CardContent>
         </Card>

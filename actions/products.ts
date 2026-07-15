@@ -30,12 +30,16 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
 
   const keywords = (formData.get('keywords') as string | null)?.trim() || null
 
-  // Handle image upload
+  // Handle main image. New flow: the client uploads the image separately via
+  // /api/admin/upload and sends back only the URL (a string). Legacy flow (a
+  // raw File in the FormData) is still supported for backward compatibility.
   let imagePath: string | undefined
-  const imageFile = formData.get('image')
-  if (imageFile && imageFile instanceof File && imageFile.size > 0) {
+  const imageValue = formData.get('image')
+  if (typeof imageValue === 'string' && imageValue.trim()) {
+    imagePath = imageValue.trim()
+  } else if (imageValue instanceof File && imageValue.size > 0) {
     try {
-      imagePath = await saveProductImage(imageFile)
+      imagePath = await saveProductImage(imageValue)
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Image upload failed' }
     }
@@ -114,18 +118,25 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
     try { variantOptionsMap = JSON.parse(variantOptionsRaw as string) } catch { /* ignore */ }
   }
 
-  // Upload option images (keyed by "optionImage_{variantIndex}_{optionIndex}")
+  // Variant/option image URLs. New flow: already-uploaded Cloudinary URLs keyed
+  // by "variantImage_{i}" / "optionImage_{i}_{oi}" arrive as JSON maps. Legacy
+  // flow (raw File entries) is still uploaded here for backward compatibility.
   const optionImagesMap: Record<string, string> = {}
-  // Upload variant images (keyed by "variantImage_{variantIndex}")
   const variantImagesMap: Record<string, string> = {}
+  const variantImageUrlsRaw = formData.get('variantImageUrls')
+  if (variantImageUrlsRaw) {
+    try { Object.assign(variantImagesMap, JSON.parse(variantImageUrlsRaw as string)) } catch { /* ignore */ }
+  }
+  const optionImageUrlsRaw = formData.get('optionImageUrls')
+  if (optionImageUrlsRaw) {
+    try { Object.assign(optionImagesMap, JSON.parse(optionImageUrlsRaw as string)) } catch { /* ignore */ }
+  }
   for (const [key, value] of formData.entries()) {
     if (key.startsWith('optionImage_') && value instanceof File && value.size > 0) {
-      const imageUrl = await saveProductImage(value)
-      optionImagesMap[key] = imageUrl
+      optionImagesMap[key] = await saveProductImage(value)
     }
     if (key.startsWith('variantImage_') && value instanceof File && value.size > 0) {
-      const imageUrl = await saveProductImage(value)
-      variantImagesMap[key] = imageUrl
+      variantImagesMap[key] = await saveProductImage(value)
     }
   }
 
@@ -254,12 +265,19 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
     return { success: false, errors: validated.error.flatten().fieldErrors }
   }
 
-  // Handle image upload
+  // Handle main image. New flow: the client uploads separately and sends only a
+  // URL string. Legacy flow (raw File) still supported. When absent, the
+  // existing image is left unchanged.
   let imagePath: string | undefined
-  const imageFile = formData.get('image')
-  if (imageFile && imageFile instanceof File && imageFile.size > 0) {
+  const imageValue = formData.get('image')
+  if (typeof imageValue === 'string' && imageValue.trim()) {
+    imagePath = imageValue.trim()
+    if (existing.image && existing.image !== imagePath) {
+      await deleteProductImage(existing.image)
+    }
+  } else if (imageValue instanceof File && imageValue.size > 0) {
     try {
-      imagePath = await saveProductImage(imageFile)
+      imagePath = await saveProductImage(imageValue)
       if (existing.image) {
         await deleteProductImage(existing.image)
       }
@@ -391,18 +409,24 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
         try { variantOptionsMap = JSON.parse(optionsRaw as string) } catch { /* ignore */ }
       }
 
-      // Upload option images (keyed by "optionImage_{variantIndex}_{optionIndex}")
+      // Newly-uploaded variant/option image URLs (uploaded client-side).
+      // Legacy raw File entries are still uploaded here for backward compat.
       const optionImagesMap: Record<string, string> = {}
-      // Upload variant images (keyed by "variantImage_{variantIndex}")
       const variantImagesMap: Record<string, string> = {}
+      const variantImageUrlsRaw = formData.get('variantImageUrls')
+      if (variantImageUrlsRaw) {
+        try { Object.assign(variantImagesMap, JSON.parse(variantImageUrlsRaw as string)) } catch { /* ignore */ }
+      }
+      const optionImageUrlsRaw = formData.get('optionImageUrls')
+      if (optionImageUrlsRaw) {
+        try { Object.assign(optionImagesMap, JSON.parse(optionImageUrlsRaw as string)) } catch { /* ignore */ }
+      }
       for (const [key, value] of formData.entries()) {
         if (key.startsWith('optionImage_') && value instanceof File && value.size > 0) {
-          const imageUrl = await saveProductImage(value)
-          optionImagesMap[key] = imageUrl
+          optionImagesMap[key] = await saveProductImage(value)
         }
         if (key.startsWith('variantImage_') && value instanceof File && value.size > 0) {
-          const imageUrl = await saveProductImage(value)
-          variantImagesMap[key] = imageUrl
+          variantImagesMap[key] = await saveProductImage(value)
         }
       }
 
