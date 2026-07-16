@@ -424,6 +424,9 @@ export async function POST(request: NextRequest) {
                 unitLabel,
                 unitLabelEn,
                 note: itemNotesMap.get(item.id) || null,
+                variantId: item.variantId,
+                variantOptionId: item.variantOptionId ?? null,
+                productUnitId: item.productUnitId ?? null,
               }
             })],
           },
@@ -462,7 +465,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Notify admins
-      const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } })
+      const admins = await tx.user.findMany({ where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] }, isActive: true }, select: { id: true } })
       if (admins.length > 0) {
         await tx.notification.createMany({
           data: admins.map((admin) => ({
@@ -497,7 +500,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Send push notification to admins (outside transaction)
-  sendPushToRole('ADMIN', {
+  sendPushToRole(['ADMIN', 'SUPER_ADMIN'], {
     title: 'طلب جديد',
     body: `طلب جديد #${order.orderNumber.slice(-8)} بقيمة ${totalPrice} د.أ`,
     data: {

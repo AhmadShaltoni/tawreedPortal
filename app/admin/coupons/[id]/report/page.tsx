@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { getDiscountCodeReport } from '@/actions/discount-codes'
 import CouponReportClient from './CouponReportClient'
+import { isAdminLike } from '@/lib/permissions'
 
 export const metadata = {
   title: 'تقرير كود الخصم',
@@ -17,7 +18,7 @@ export default async function CouponReportPage({ params }: PageProps) {
   const { id } = await params
   const user = await getCurrentUser()
 
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     redirect('/login')
   }
 

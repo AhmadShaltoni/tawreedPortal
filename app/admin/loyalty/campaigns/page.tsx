@@ -2,11 +2,12 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { getCampaigns, createCampaign, deleteCampaign } from '@/actions/loyalty-campaigns'
 import { Zap, Trash2, Plus } from 'lucide-react'
+import { isAdminLike } from '@/lib/permissions'
 
 export default async function CampaignsPage() {
   const session = await auth()
 
-  if (!session?.user || session.user.role !== 'ADMIN') {
+  if (!session?.user || !isAdminLike(session.user.role)) {
     redirect('/login')
   }
 

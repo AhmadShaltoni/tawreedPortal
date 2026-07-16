@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { getCouponCategoryOptions } from '@/actions/discount-codes'
 import CouponForm from '../CouponForm'
+import { isAdminLike } from '@/lib/permissions'
 
 export const metadata = {
   title: 'إنشاء كود خصم جديد',
@@ -10,7 +11,7 @@ export const metadata = {
 export default async function NewCouponPage() {
   const user = await getCurrentUser()
 
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     redirect('/login')
   }
 

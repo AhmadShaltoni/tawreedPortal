@@ -209,6 +209,26 @@ export const updateBuyerOrderSchema = z.object({
   notes: z.string().max(1000, 'Notes are too long').optional(),
 })
 
+// Buyer-requested edit to a pending order (awaits admin approval).
+// items is the FULL desired set of lines (same identifiers as a CartItem);
+// omitting a currently-ordered line means removing it.
+export const createOrderEditRequestSchema = z.object({
+  items: z.array(z.object({
+    variantId: z.string().min(1, 'Variant is required'),
+    variantOptionId: z.string().optional().nullable(),
+    productUnitId: z.string().optional().nullable(),
+    quantity: z.coerce.number().int().min(1, 'Quantity must be at least 1'),
+    note: z.string().max(500, 'Note is too long').optional().nullable(),
+  })).min(1, 'At least one item is required'),
+  deliveryAddress: z.string().min(5, 'Delivery address is required').optional(),
+  deliveryAddressDetails: z.string().max(500, 'Detailed address is too long').optional(),
+  deliveryCity: z.string().min(2, 'City is required').optional(),
+  deliveryCityId: z.string().optional(),
+  deliveryAreaId: z.string().optional(),
+  buyerNotes: z.string().max(1000, 'Notes are too long').optional(),
+  buyerMessage: z.string().max(500, 'Message is too long').optional(),
+})
+
 // ============================================
 // DISCOUNT CODE VALIDATIONS
 // ============================================

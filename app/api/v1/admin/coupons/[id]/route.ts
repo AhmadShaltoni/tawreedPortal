@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
 import { createDiscountCodeSchema } from '@/lib/validations'
+import { isAdminLike } from '@/lib/permissions'
 
 export async function OPTIONS() {
   return corsOptions()
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const { id } = await context.params
     const { user, error: authError } = await authenticateApiRequest(request)
     if (!user) return apiError(authError || 'Authentication required', 401)
-    if (user.role !== 'ADMIN') return apiError('Admin access required', 403)
+    if (!isAdminLike(user.role)) return apiError('Admin access required', 403)
 
     const code = await db.discountCode.findUnique({
       where: { id },
@@ -51,7 +52,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const { id } = await context.params
     const { user, error: authError } = await authenticateApiRequest(request)
     if (!user) return apiError(authError || 'Authentication required', 401)
-    if (user.role !== 'ADMIN') return apiError('Admin access required', 403)
+    if (!isAdminLike(user.role)) return apiError('Admin access required', 403)
 
     const body = await request.json()
     const validated = createDiscountCodeSchema.safeParse(body)
@@ -107,7 +108,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     const { id } = await context.params
     const { user, error: authError } = await authenticateApiRequest(request)
     if (!user) return apiError(authError || 'Authentication required', 401)
-    if (user.role !== 'ADMIN') return apiError('Admin access required', 403)
+    if (!isAdminLike(user.role)) return apiError('Admin access required', 403)
 
     await db.discountCode.delete({ where: { id } })
 

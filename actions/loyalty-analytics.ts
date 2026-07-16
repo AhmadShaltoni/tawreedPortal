@@ -2,13 +2,14 @@
 
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
+import { isAdminLike } from '@/lib/permissions'
 
 /**
  * Get loyalty dashboard stats for admin
  */
 export async function getLoyaltyDashboardStats() {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     return null
   }
 
@@ -91,7 +92,7 @@ export async function getLoyaltyDashboardStats() {
  */
 export async function getTopLoyalCustomers(limit: number = 10) {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     return []
   }
 
@@ -123,7 +124,7 @@ export async function getTopLoyalCustomers(limit: number = 10) {
  */
 export async function getPointsDistribution(days: number = 30) {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     return []
   }
 
@@ -155,7 +156,7 @@ export async function getPointsDistribution(days: number = 30) {
  */
 export async function getCampaignPerformance(campaignId?: string) {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     return null
   }
 
@@ -218,7 +219,7 @@ export async function getCampaignPerformance(campaignId?: string) {
  */
 export async function getRewardCostEstimation() {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     return null
   }
 
@@ -271,7 +272,7 @@ export async function getAllTransactions(page: number = 1, limit: number = 50, f
   endDate?: Date
 }) {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     return { transactions: [], total: 0, page, totalPages: 0 }
   }
 

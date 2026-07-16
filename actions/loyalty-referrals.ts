@@ -3,6 +3,7 @@
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import type { ActionResponse } from '@/types'
+import { isAdminLike } from '@/lib/permissions'
 
 /**
  * Generate a unique referral code
@@ -165,7 +166,7 @@ export async function validateReferralCode(code: string): Promise<ActionResponse
 export async function getReferralStats(): Promise<ActionResponse<any>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
     

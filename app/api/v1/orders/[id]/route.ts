@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { authenticateApiRequest, apiResponse, apiError, corsOptions } from '@/lib/api-auth'
 import { updateBuyerOrderSchema } from '@/lib/validations'
+import { isStaffRole } from '@/lib/permissions'
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -27,13 +29,18 @@ export async function GET(
       redeemedReward: {
         include: { reward: { select: { id: true, name: true, nameEn: true } } },
       },
+      editRequests: {
+        where: { status: 'PENDING' },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
     },
   })
 
   if (!order) return apiError('Order not found', 404)
 
-  // Only the buyer or admin can view the order
-  if (order.buyerId !== user.id && user.role !== 'ADMIN') {
+  // Only the buyer or a staff member can view the order
+  if (order.buyerId !== user.id && !isStaffRole(user.role)) {
     return apiError('Not authorized', 403)
   }
 
@@ -67,6 +74,11 @@ export async function GET(
     },
     note: item.note || null,
     isReward: item.isReward,
+    // Live selection references so the buyer-edit editor can preload lines
+    // (null on legacy/RFQ orders and reward prize items — those aren't editable)
+    variantId: item.variantId,
+    variantOptionId: item.variantOptionId,
+    productUnitId: item.productUnitId,
   }))
 
   // Loyalty reward applied to this order (for "reward used" banner)
@@ -81,15 +93,32 @@ export async function GET(
       }
     : null
 
+  // Pending buyer edit request (if any) — surfaced so the app can show a
+  // "pending review" banner and block further edits until it's resolved.
+  const pending = order.editRequests[0]
+  const pendingEditRequest = pending
+    ? {
+        id: pending.id,
+        status: pending.status,
+        diff: pending.diff,
+        estimatedTotal: pending.estimatedTotal,
+        estimatedDeliveryFee: pending.estimatedDeliveryFee,
+        buyerMessage: pending.buyerMessage,
+        createdAt: pending.createdAt,
+      }
+    : null
+
   return apiResponse({
     order: {
       ...order,
+      editRequests: undefined,
       items: formattedItems,
       deliveryAddressDetails: order.deliveryAddressDetails,
       buyerNotes: order.buyerNotes,
       notes: order.buyerNotes,
       statusHistory: order.statusHistory,
       redeemedReward,
+      pendingEditRequest,
     }
   })
 }
@@ -131,7 +160,7 @@ export async function PATCH(
   }
 
   // Update only the fields that are provided
-  const updateData: any = {}
+  const updateData: Prisma.OrderUpdateInput = {}
   if (validated.data.deliveryAddress) updateData.deliveryAddress = validated.data.deliveryAddress
   if (validated.data.deliveryCity) updateData.deliveryCity = validated.data.deliveryCity
   if (validated.data.deliveryAddressDetails !== undefined) {

@@ -2,6 +2,7 @@ import { getAppVersionConfigs } from '@/actions/app-version'
 import { getCurrentUser } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import AppVersionClient from './AppVersionClient'
+import { isAdminLike } from '@/lib/permissions'
 
 export const metadata = {
   title: 'إدارة تحديثات التطبيق',
@@ -11,7 +12,7 @@ export default async function AppVersionPage() {
   const user = await getCurrentUser()
 
   // Only admin can access
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     redirect('/login')
   }
 

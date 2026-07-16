@@ -12,9 +12,11 @@ datasource db {
 
 // User roles in the platform
 enum UserRole {
-  BUYER     // Grocery store owners (mobile app)
-  SUPPLIER  // Wholesale distributors (managed by admin)
-  ADMIN     // Platform administrators (dashboard)
+  BUYER       // Grocery store owners (mobile app)
+  SUPPLIER    // Wholesale distributors (managed by admin)
+  ADMIN       // Platform staff with a scoped set of dashboard permissions
+  SUPER_ADMIN // Owner-level staff: full access + manages other staff
+  DELIVERY    // Delivery representative: orders access only
 }
 
 // Status of a purchase request (RFQ) - Legacy
@@ -43,6 +45,15 @@ enum OrderStatus {
   SHIPPED       // Order is in transit / out for delivery
   DELIVERED     // Order delivered to buyer
   CANCELLED     // Order cancelled
+}
+
+// Buyer-requested edit to an order (items/delivery/notes), awaiting admin approval.
+// Only allowed while the order is PENDING or CONFIRMED.
+enum OrderEditStatus {
+  PENDING       // Awaiting admin review
+  APPROVED      // Admin applied the edit to the order
+  REJECTED      // Admin declined the edit
+  CANCELLED     // Buyer withdrew the request (or superseded by a newer one)
 }
 
 // Notification types
@@ -150,7 +161,11 @@ model User {
   passwordHash  String
   username      String    // اسم المستخدم (بدلاً من name)
   role          UserRole
-  
+
+  // Dashboard permission keys for staff (role = ADMIN). SUPER_ADMIN implies all;
+  // DELIVERY is fixed to orders. Ignored for BUYER/SUPPLIER. See lib/permissions.ts.
+  permissions   String[]  @default([])
+
   // Business details
   storeName     String?   // اسم البقالة/المتجر (بدلاً من businessName)
   businessAddress String?
@@ -332,7 +347,10 @@ model Order {
   
   // Relations - Order items
   items         OrderItem[]
-  
+
+  // Buyer-requested edits awaiting admin approval
+  editRequests  OrderEditRequest[]
+
   // Legacy relations (nullable for new orders)
   requestId     String?     @unique
   request       Request?    @relation(fields: [requestId], references: [id])
@@ -389,6 +407,13 @@ model OrderItem {
   // Loyalty prize item (added via redeemed FREE_PRODUCT reward, price 0)
   isReward      Boolean  @default(false)
 
+  // Live selection references (nullable — populated for direct orders so the
+  // buyer-edit flow can preload existing lines and re-price against the catalog;
+  // null on legacy/RFQ orders and reward prize items).
+  variantId        String?
+  variantOptionId  String?
+  productUnitId    String?
+
   // Relations
   orderId       String
   order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -396,6 +421,44 @@ model OrderItem {
   
   @@index([orderId])
   @@index([productId])
+}
+
+// Buyer-requested edit to an order, awaiting admin approval.
+// Represents the FULL desired state of the order (items + delivery + notes).
+// Prices are estimated at request time (for display) and recomputed
+// authoritatively when an admin approves it.
+model OrderEditRequest {
+  id            String          @id @default(cuid())
+  orderId       String
+  order         Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status        OrderEditStatus @default(PENDING)
+
+  // Desired items, referencing live variant/option/unit ids (same shape as CartItem):
+  // [{ variantId, variantOptionId?, productUnitId?, quantity, note? }]
+  proposedItems Json
+
+  // Desired delivery info (null = unchanged from the order)
+  proposedDeliveryAddress        String?
+  proposedDeliveryAddressDetails String?
+  proposedDeliveryCity           String?
+  proposedDeliveryCityId         String?
+  proposedDeliveryAreaId         String?
+  proposedBuyerNotes             String?
+
+  // Structured before → after snapshot for clear display in the dashboard
+  diff                 Json
+  estimatedTotal       Float?
+  estimatedDeliveryFee Float?
+
+  buyerMessage  String?   // optional note from buyer explaining the change
+  adminNote     String?   // admin note on approve/reject
+
+  createdAt     DateTime  @default(now())
+  resolvedAt    DateTime?
+  resolvedById  String?   // admin/staff user who approved/rejected
+
+  @@index([orderId])
+  @@index([status])
 }
 
 // ============================================
@@ -1273,6 +1336,19 @@ model OtpRateLimit {
   lastRequest     DateTime  @default(now())
 
   @@index([phone])
+}
+
+// Throttles failed password logins (web + mobile) to block brute-force guessing.
+// Keyed by identifier (phone). Cleared on successful login.
+model LoginRateLimit {
+  id            String    @id @default(cuid())
+  identifier    String    @unique // phone number attempting login
+  attempts      Int       @default(0)
+  windowStart   DateTime  @default(now())
+  blockedUntil  DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  @@index([identifier])
 }
 
 // ============================================

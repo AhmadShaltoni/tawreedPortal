@@ -2,11 +2,12 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { getLoyaltyTransactions } from '@/actions/loyalty-points'
 import { History, TrendingUp, TrendingDown } from 'lucide-react'
+import { isAdminLike } from '@/lib/permissions'
 
 export default async function TransactionsPage() {
   const session = await auth()
 
-  if (!session?.user || session.user.role !== 'ADMIN') {
+  if (!session?.user || !isAdminLike(session.user.role)) {
     redirect('/login')
   }
 

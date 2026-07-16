@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { isAdminLike } from '@/lib/permissions'
 
 const noticeSchema = z.object({
   text: z.string().min(1).max(255),
@@ -16,7 +17,7 @@ const noticeSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return NextResponse.json(
         { success: false, error: 'غير مصرح بالدخول' },
         { status: 401 }
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return NextResponse.json(
         { success: false, error: 'غير مصرح بالدخول' },
         { status: 401 }

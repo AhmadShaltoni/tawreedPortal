@@ -25,7 +25,9 @@ export default function LoginPage() {
     if (result.success) {
       // loginUser returns the role for redirect
       const role = result.data?.role
-      if (role === 'ADMIN') {
+      if (role === 'DELIVERY') {
+        router.push('/admin/orders')
+      } else if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
         router.push('/admin')
       } else if (role === 'SUPPLIER') {
         router.push('/supplier')

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
+import { isAdminLike } from '@/lib/permissions'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const user = await getCurrentUser()
-    if (user?.role !== 'ADMIN') {
+    if (!isAdminLike(user?.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const { id } = await params
     const user = await getCurrentUser()
-    if (user?.role !== 'ADMIN') {
+    if (!isAdminLike(user?.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -78,7 +79,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const { id } = await params
     const user = await getCurrentUser()
-    if (user?.role !== 'ADMIN') {
+    if (!isAdminLike(user?.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

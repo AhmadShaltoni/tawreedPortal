@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
 import { Plus } from 'lucide-react'
 import CouponListClient from './CouponListClient'
+import { isAdminLike } from '@/lib/permissions'
 
 export const metadata = {
   title: 'إدارة أكواد الخصم',
@@ -13,7 +14,7 @@ export const metadata = {
 export default async function CouponsPage() {
   const user = await getCurrentUser()
 
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     redirect('/login')
   }
 

@@ -3,11 +3,12 @@ import { auth } from '@/lib/auth'
 import { getLoyaltyDashboardStats, getTopLoyalCustomers } from '@/actions/loyalty-analytics'
 import Link from 'next/link'
 import { BarChart3, Gift, Users, TrendingUp } from 'lucide-react'
+import { isAdminLike } from '@/lib/permissions'
 
 export default async function LoyaltyDashboard() {
   const session = await auth()
 
-  if (!session?.user || session.user.role !== 'ADMIN') {
+  if (!session?.user || !isAdminLike(session.user.role)) {
     redirect('/login')
   }
 

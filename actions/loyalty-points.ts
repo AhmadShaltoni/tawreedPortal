@@ -5,6 +5,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAndSendNotification } from '@/lib/push-notifications'
 import { hashPhone } from '@/lib/account/phone-hash'
 import type { ActionResponse } from '@/types'
+import { isAdminLike } from '@/lib/permissions'
 
 /**
  * Get or create loyalty config (singleton)
@@ -521,7 +522,7 @@ export async function getUserTransactions(userId?: string, page = 1, limit = 20)
 export async function adminAddPoints(formData: FormData): Promise<ActionResponse<any>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
     
@@ -597,7 +598,7 @@ export async function adminAddPoints(formData: FormData): Promise<ActionResponse
 export async function adminRemovePoints(formData: FormData): Promise<ActionResponse<any>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
     
@@ -667,7 +668,7 @@ export async function adminRemovePoints(formData: FormData): Promise<ActionRespo
 export async function getLoyaltyTransactions(limit: number = 100) {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return []
     }
 

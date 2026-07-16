@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
+import { isAdminLike } from '@/lib/permissions'
 
 // GET /api/v1/admin/marketing-sections/search-products?q=...&exclude=id1,id2&all=true
 export async function GET(request: NextRequest) {
   const session = await auth()
-  if (!session?.user || session.user.role !== 'ADMIN') {
+  if (!session?.user || !isAdminLike(session.user.role)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

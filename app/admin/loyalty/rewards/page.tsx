@@ -3,11 +3,12 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { getRewards } from '@/actions/loyalty-rewards'
 import { RewardsClient } from './RewardsClient'
+import { isAdminLike } from '@/lib/permissions'
 
 export default async function RewardsPage() {
   const session = await auth()
 
-  if (!session?.user || session.user.role !== 'ADMIN') {
+  if (!session?.user || !isAdminLike(session.user.role)) {
     redirect('/login')
   }
 

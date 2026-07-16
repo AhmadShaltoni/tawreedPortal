@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import EditNoticeForm from './EditNoticeForm'
+import { isAdminLike } from '@/lib/permissions'
 
 export const metadata = {
   title: 'تعديل النوتس',
@@ -18,7 +19,7 @@ export default async function EditNoticePage({ params }: PageProps) {
   const user = await getCurrentUser()
 
   // Only admin can access
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     redirect('/login')
   }
 

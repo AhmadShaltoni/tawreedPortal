@@ -12,6 +12,7 @@ import {
 } from '@/lib/app-version'
 import { z } from 'zod'
 import type { ActionResponse } from '@/types'
+import { isAdminLike } from '@/lib/permissions'
 
 export interface AppVersionConfigType {
   id: string
@@ -55,7 +56,7 @@ export async function getAppVersionConfigs(): Promise<
 > {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -93,7 +94,7 @@ export async function updateAppVersionConfig(
 ): Promise<ActionResponse<AppVersionConfigType>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 

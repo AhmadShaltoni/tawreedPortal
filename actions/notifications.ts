@@ -5,6 +5,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { sendPushToUser, sendPushToAll, sendPushToRole, getPushStats, cleanupStaleTokens } from '@/lib/push-notifications'
 import { saveNotificationImage } from '@/lib/upload'
 import type { UserRole } from '@prisma/client'
+import { isAdminLike } from '@/lib/permissions'
 
 export type NotificationTargetType =
   | 'PRODUCT'
@@ -101,7 +102,7 @@ export async function getNotifications(
 ): Promise<ActionResponse> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -161,7 +162,7 @@ export async function getNotifications(
 export async function getNotificationStats(): Promise<ActionResponse> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -200,7 +201,7 @@ export async function getNotificationStats(): Promise<ActionResponse> {
 export async function sendNotification(formData: FormData): Promise<ActionResponse> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -405,7 +406,7 @@ export async function searchUsers(
 ): Promise<ActionResponse> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -456,7 +457,7 @@ export async function searchNotificationTargets(
 ): Promise<ActionResponse<{ items: NotificationTargetOption[] }>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -575,7 +576,7 @@ export async function uploadNotificationImage(
 ): Promise<ActionResponse<{ url: string }>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -603,7 +604,7 @@ export async function deleteNotification(
 ): Promise<ActionResponse> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -629,7 +630,7 @@ export async function markNotificationAsRead(
 ): Promise<ActionResponse> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -654,7 +655,7 @@ export async function markNotificationAsRead(
 export async function cleanupDeviceTokens(staleDays = 90): Promise<ActionResponse> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
 

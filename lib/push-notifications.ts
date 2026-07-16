@@ -336,11 +336,12 @@ export async function sendPushToAuthenticated(payload: PushPayload) {
  * Send push notification to all devices linked to users with a specific role.
  * Only targets tokens that have a linked user with the matching role.
  */
-export async function sendPushToRole(role: UserRole, payload: PushPayload) {
+export async function sendPushToRole(role: UserRole | UserRole[], payload: PushPayload) {
+  const roles = Array.isArray(role) ? role : [role]
   if (!isFirebaseConfigured()) {
     console.warn('[Push] Firebase not configured, skipping role-based push', {
       target: 'role',
-      role,
+      role: roles,
       payload: getPayloadDebugInfo(payload),
     })
     return null
@@ -349,17 +350,17 @@ export async function sendPushToRole(role: UserRole, payload: PushPayload) {
   try {
     console.log('[Push] Preparing role notification', {
       target: 'role',
-      role,
+      role: roles,
       payload: getPayloadDebugInfo(payload),
     })
 
-    // Get active device tokens linked to users with the specific role
+    // Get active device tokens linked to users with any of the given roles
     // userId must not be null (anonymous tokens have no role)
     const deviceTokens = await db.deviceToken.findMany({
       where: {
         isActive: true,
         userId: { not: null },
-        user: { role },
+        user: { role: { in: roles } },
       },
       select: { token: true },
     })

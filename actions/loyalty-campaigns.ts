@@ -6,6 +6,7 @@ import { createAndSendNotification } from '@/lib/push-notifications'
 import { getActiveCampaignsForUser } from '@/lib/loyalty-queries'
 import type { ActionResponse } from '@/types'
 import { revalidatePath } from 'next/cache'
+import { isAdminLike } from '@/lib/permissions'
 
 /**
  * Get campaigns with optional filters
@@ -59,7 +60,7 @@ export async function getCampaignById(id: string) {
  */
 export async function createCampaign(formData: FormData): Promise<ActionResponse> {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     return { success: false, error: 'غير مصرح' }
   }
 
@@ -109,7 +110,7 @@ export async function createCampaign(formData: FormData): Promise<ActionResponse
  */
 export async function updateCampaign(formData: FormData): Promise<ActionResponse> {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     return { success: false, error: 'غير مصرح' }
   }
 
@@ -160,7 +161,7 @@ export async function updateCampaign(formData: FormData): Promise<ActionResponse
  */
 export async function deleteCampaign(id: string): Promise<ActionResponse> {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     return { success: false, error: 'غير مصرح' }
   }
 
@@ -301,7 +302,7 @@ export async function getUserCampaignProgress(userId?: string) {
   }
 
   // If not admin, can only view own progress
-  if (userId && (!user || (user.role !== 'ADMIN' && user.id !== userId))) {
+  if (userId && (!user || (!isAdminLike(user.role) && user.id !== userId))) {
     return []
   }
 

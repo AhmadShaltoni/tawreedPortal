@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { invalidateDiscountCache } from '@/lib/discount-engine'
 import type { ActionResponse } from '@/types'
+import { isAdminLike } from '@/lib/permissions'
 
 // Types
 export interface DiscountCampaignData {
@@ -41,7 +42,7 @@ export async function createDiscountCampaign(data: {
 }): Promise<ActionResponse<DiscountCampaignData>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -128,7 +129,7 @@ export async function updateDiscountCampaign(
 ): Promise<ActionResponse<DiscountCampaignData>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -196,7 +197,7 @@ export async function updateDiscountCampaign(
 export async function toggleDiscountCampaignStatus(id: string): Promise<ActionResponse> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -226,7 +227,7 @@ export async function toggleDiscountCampaignStatus(id: string): Promise<ActionRe
 export async function deleteDiscountCampaign(id: string): Promise<ActionResponse> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -245,7 +246,7 @@ export async function deleteDiscountCampaign(id: string): Promise<ActionResponse
 export async function getAllDiscountCampaigns(): Promise<ActionResponse<DiscountCampaignData[]>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -293,7 +294,7 @@ export async function getAllDiscountCampaigns(): Promise<ActionResponse<Discount
 export async function getDiscountCampaign(id: string): Promise<ActionResponse<DiscountCampaignData & { products: { productId: string; product: { id: string; name: string; nameEn: string | null; image: string | null } }[] }>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 

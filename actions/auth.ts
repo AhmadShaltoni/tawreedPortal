@@ -4,6 +4,7 @@ import { hash } from 'bcryptjs'
 import { db } from '@/lib/db'
 import { signIn, signOut } from '@/lib/auth'
 import { signUpSchema, signInSchema } from '@/lib/validations'
+import { checkLoginRateLimit, recordFailedLogin, clearLoginRateLimit } from '@/lib/login-rate-limit'
 import { createUserReferral } from './loyalty-referrals'
 import { awardWelcomeBonus, processReferralRewards } from './loyalty-points'
 import type { ActionResponse } from '@/types'
@@ -124,21 +125,35 @@ export async function loginUser(formData: FormData): Promise<ActionResponse<{ ro
     }
   }
 
+  const phone = validated.data.phone
+
+  // Throttle brute-force attempts.
+  const rate = await checkLoginRateLimit(phone)
+  if (!rate.allowed) {
+    const minutes = Math.max(1, Math.ceil(rate.retryAfterSeconds / 60))
+    return {
+      success: false,
+      error: `تم تجاوز عدد محاولات تسجيل الدخول. حاول مرة أخرى بعد ${minutes} دقيقة`,
+    }
+  }
+
   try {
     await signIn('credentials', {
-      phone: validated.data.phone,
+      phone,
       password: validated.data.password,
       redirect: false,
     })
 
     // Fetch user role for redirect
     const user = await db.user.findUnique({
-      where: { phone: validated.data.phone },
+      where: { phone },
       select: { role: true },
     })
 
+    await clearLoginRateLimit(phone)
     return { success: true, data: { role: user?.role ?? 'BUYER' } }
   } catch {
+    await recordFailedLogin(phone)
     return {
       success: false,
       error: 'رقم الهاتف أو كلمة المرور غير صحيحة',

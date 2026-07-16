@@ -3,6 +3,7 @@
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
+import { isAdminLike } from '@/lib/permissions'
 
 // ============================================
 // DELIVERY CONFIG (Singleton)
@@ -28,7 +29,7 @@ export async function getDeliveryConfig() {
 
 export async function updateDeliveryConfig(formData: FormData) {
   const user = await getCurrentUser()
-  if (user?.role !== 'ADMIN') return { success: false, error: 'Unauthorized' }
+  if (!isAdminLike(user?.role)) return { success: false, error: 'Unauthorized' }
 
   const isEnabled = formData.get('isEnabled') === 'true'
   const defaultFee = parseFloat(formData.get('defaultFee') as string) || 3.0
@@ -89,7 +90,7 @@ export async function updateDeliveryZone(zoneId: string, data: {
   notes?: string | null
 }) {
   const user = await getCurrentUser()
-  if (user?.role !== 'ADMIN') return { success: false, error: 'Unauthorized' }
+  if (!isAdminLike(user?.role)) return { success: false, error: 'Unauthorized' }
 
   await db.deliveryZone.update({
     where: { id: zoneId },
@@ -110,7 +111,7 @@ export async function createOrUpdateZoneForCity(cityId: string, data: {
   notes?: string | null
 }) {
   const user = await getCurrentUser()
-  if (user?.role !== 'ADMIN') return { success: false, error: 'Unauthorized' }
+  if (!isAdminLike(user?.role)) return { success: false, error: 'Unauthorized' }
 
   await db.deliveryZone.upsert({
     where: { cityId },
@@ -146,7 +147,7 @@ export async function bulkUpdateZones(updates: Array<{
   isVisible?: boolean
 }>) {
   const user = await getCurrentUser()
-  if (user?.role !== 'ADMIN') return { success: false, error: 'Unauthorized' }
+  if (!isAdminLike(user?.role)) return { success: false, error: 'Unauthorized' }
 
   for (const update of updates) {
     await db.deliveryZone.upsert({
@@ -171,7 +172,7 @@ export async function bulkUpdateZones(updates: Array<{
 
 export async function initializeAllZones(defaultFee: number) {
   const user = await getCurrentUser()
-  if (user?.role !== 'ADMIN') return { success: false, error: 'Unauthorized' }
+  if (!isAdminLike(user?.role)) return { success: false, error: 'Unauthorized' }
 
   const cities = await db.city.findMany()
   
@@ -218,7 +219,7 @@ export async function getActiveDeliveryPromotions() {
 
 export async function createDeliveryPromotion(formData: FormData) {
   const user = await getCurrentUser()
-  if (user?.role !== 'ADMIN') return { success: false, error: 'Unauthorized' }
+  if (!isAdminLike(user?.role)) return { success: false, error: 'Unauthorized' }
 
   const name = formData.get('name') as string
   const nameEn = formData.get('nameEn') as string || null
@@ -265,7 +266,7 @@ export async function createDeliveryPromotion(formData: FormData) {
 
 export async function updateDeliveryPromotion(id: string, formData: FormData) {
   const user = await getCurrentUser()
-  if (user?.role !== 'ADMIN') return { success: false, error: 'Unauthorized' }
+  if (!isAdminLike(user?.role)) return { success: false, error: 'Unauthorized' }
 
   const name = formData.get('name') as string
   const nameEn = formData.get('nameEn') as string || null
@@ -305,7 +306,7 @@ export async function updateDeliveryPromotion(id: string, formData: FormData) {
 
 export async function deleteDeliveryPromotion(id: string) {
   const user = await getCurrentUser()
-  if (user?.role !== 'ADMIN') return { success: false, error: 'Unauthorized' }
+  if (!isAdminLike(user?.role)) return { success: false, error: 'Unauthorized' }
 
   await db.deliveryPromotion.delete({ where: { id } })
 
@@ -315,7 +316,7 @@ export async function deleteDeliveryPromotion(id: string) {
 
 export async function toggleDeliveryPromotion(id: string, isActive: boolean) {
   const user = await getCurrentUser()
-  if (user?.role !== 'ADMIN') return { success: false, error: 'Unauthorized' }
+  if (!isAdminLike(user?.role)) return { success: false, error: 'Unauthorized' }
 
   await db.deliveryPromotion.update({
     where: { id },
@@ -523,7 +524,7 @@ export async function calculateDeliveryFee(cityId: string, orderTotal: number): 
 
 export async function getDeliveryStats() {
   const user = await getCurrentUser()
-  if (user?.role !== 'ADMIN') return null
+  if (!isAdminLike(user?.role)) return null
 
   const [config, zones, activePromotions, ordersWithDelivery, totalOrders] = await Promise.all([
     getDeliveryConfig(),

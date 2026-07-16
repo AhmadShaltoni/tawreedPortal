@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/Badge'
 import { useLanguage } from '@/lib/LanguageContext'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import { updateAdminOrderStatus } from '@/actions/admin-orders'
+import { SendToDelivery } from './SendToDelivery'
+import { PendingEditCard } from './PendingEditCard'
 
 const ORDER_STATUSES = ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'] as const
 
@@ -62,8 +64,17 @@ interface Props {
       discountPercent: number | null
       note: string | null
       isReward?: boolean
+      displayImage?: string | null
       product: { id: string; name: string; image: string | null } | null
     }>
+    pendingEditRequest?: {
+      id: string
+      diff: unknown
+      estimatedTotal: number | null
+      estimatedDeliveryFee: number | null
+      buyerMessage: string | null
+      createdAt: Date | string
+    } | null
   }
 }
 
@@ -121,6 +132,10 @@ export function OrderDetailClient({ order }: Props) {
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>
       )}
 
+      {order.pendingEditRequest && (
+        <PendingEditCard editRequest={order.pendingEditRequest} />
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left - Order Items */}
         <div className="lg:col-span-2 space-y-6">
@@ -134,8 +149,8 @@ export function OrderDetailClient({ order }: Props) {
                   <div key={item.id}>
                     <div className={`flex items-center gap-4 p-3 rounded-lg ${item.isReward ? 'bg-orange-50 border border-orange-200' : 'bg-gray-50'} ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
                     <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
-                      {item.productImage || item.product?.image ? (
-                        <Image src={item.productImage || item.product?.image || ''} alt={item.productName} width={64} height={64} className="object-cover w-full h-full" />
+                      {item.displayImage || item.productImage || item.product?.image ? (
+                        <Image src={item.displayImage || item.productImage || item.product?.image || ''} alt={item.productName} width={64} height={64} className="object-cover w-full h-full" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-400 text-lg">{item.isReward ? '🎁' : '📦'}</div>
                       )}
@@ -299,6 +314,9 @@ export function OrderDetailClient({ order }: Props) {
               </div>
             </CardContent>
           </Card>
+
+          {/* Send to delivery driver (WhatsApp + printable sheet) */}
+          <SendToDelivery order={order} />
 
           {/* Update Status */}
           {order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && (

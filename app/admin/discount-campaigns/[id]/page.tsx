@@ -3,6 +3,7 @@ import { redirect, notFound } from 'next/navigation'
 import { db } from '@/lib/db'
 import { getDiscountCampaign } from '@/actions/discount-campaigns'
 import DiscountCampaignForm from '../DiscountCampaignForm'
+import { isAdminLike } from '@/lib/permissions'
 
 export const metadata = {
   title: 'تعديل حملة الخصم',
@@ -15,7 +16,7 @@ export default async function EditDiscountCampaignPage({
 }) {
   const user = await getCurrentUser()
 
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     redirect('/login')
   }
 

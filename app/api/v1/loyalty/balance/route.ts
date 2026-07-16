@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   if (!user) return apiError(error ?? 'Unauthorized', 401)
 
   try {
-    const [balance, recentTransactions, config] = await Promise.all([
+    const [balance, recentTransactions, config, pendingOrders] = await Promise.all([
       db.loyaltyBalance.findUnique({ where: { userId: user.id } }),
       db.loyaltyTransaction.findMany({
         where: { userId: user.id },
@@ -22,12 +22,43 @@ export async function GET(request: NextRequest) {
         take: 5,
       }),
       db.loyaltyConfig.findFirst(),
+      // Orders that are placed but haven't awarded points yet — used to show the
+      // customer how many points are still on the way (added on delivery).
+      db.order.findMany({
+        where: {
+          buyerId: user.id,
+          status: { not: 'CANCELLED' },
+          loyaltyPointsEarned: null,
+        },
+        select: { totalPrice: true, deliveryFee: true },
+      }),
     ])
+
+    // Sum the points these not-yet-awarded orders will earn, mirroring the
+    // backend `awardOrderPoints` calculation so the forecast matches reality.
+    let pendingPoints = 0
+    if (config?.isEnabled) {
+      for (const order of pendingOrders) {
+        const base = config.excludeDeliveryFees
+          ? order.totalPrice - order.deliveryFee
+          : order.totalPrice
+        if (config.minOrderValue && base < config.minOrderValue) continue
+        const raw = (base / (config.calculationBase || 1)) * config.pointsPerJod
+        const rounded =
+          config.roundingMode === 'CEIL'
+            ? Math.ceil(raw)
+            : config.roundingMode === 'ROUND'
+              ? Math.round(raw)
+              : Math.floor(raw)
+        if (rounded > 0) pendingPoints += rounded
+      }
+    }
 
     return apiResponse({
       currentBalance: balance?.currentBalance ?? 0,
       totalEarned: balance?.totalEarned ?? 0,
       totalRedeemed: balance?.totalRedeemed ?? 0,
+      pendingPoints,
       recentTransactions: recentTransactions.map(mapTransaction),
       // Public earn settings so the app can forecast points before checkout
       earnConfig: {

@@ -130,9 +130,14 @@ export async function deleteUser(id: string): Promise<ActionResponse> {
   const user = await db.user.findUnique({ where: { id } })
   if (!user) return { success: false, error: 'User not found' }
 
+  // Staff accounts are managed from the dedicated staff page.
+  if (user.role === 'SUPER_ADMIN' || user.role === 'DELIVERY') {
+    return { success: false, error: 'أدر حسابات الموظفين من صفحة الموظفين والصلاحيات' }
+  }
+
   // Prevent deleting the only admin user
   if (user.role === 'ADMIN') {
-    const adminCount = await db.user.count({ where: { role: 'ADMIN' } })
+    const adminCount = await db.user.count({ where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } } })
     if (adminCount <= 1) {
       return { success: false, error: 'Cannot delete the only admin user' }
     }

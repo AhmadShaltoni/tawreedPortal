@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Plus } from 'lucide-react'
 import { getAllDiscountCampaigns } from '@/actions/discount-campaigns'
 import DiscountCampaignsClient from './DiscountCampaignsClient'
+import { isAdminLike } from '@/lib/permissions'
 
 export const metadata = {
   title: 'حملات الخصم',
@@ -13,7 +14,7 @@ export const metadata = {
 export default async function DiscountCampaignsPage() {
   const user = await getCurrentUser()
 
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     redirect('/login')
   }
 

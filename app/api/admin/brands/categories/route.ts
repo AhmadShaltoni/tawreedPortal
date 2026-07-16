@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
+import { isAdminLike } from '@/lib/permissions'
 
 export async function GET() {
   try {
     const user = await getCurrentUser()
-    if (user?.role !== 'ADMIN') {
+    if (!isAdminLike(user?.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

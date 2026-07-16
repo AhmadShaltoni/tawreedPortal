@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
 import { Plus } from 'lucide-react'
 import NoticeListClient from './NoticeListClient'
+import { isAdminLike } from '@/lib/permissions'
 
 export const metadata = {
   title: 'إدارة النوتس',
@@ -14,7 +15,7 @@ export default async function NoticesPage() {
   const user = await getCurrentUser()
 
   // Only admin can access
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     redirect('/login')
   }
 

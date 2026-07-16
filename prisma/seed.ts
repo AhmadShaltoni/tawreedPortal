@@ -567,25 +567,27 @@ async function main() {
   }
   console.log(`✅ Seeded ${jordanCities.length} cities with ${totalAreas} areas`)
 
-  // Seed admin user
-  const adminPhone = '0791234567'
+  // Seed super admin user (local/dev convenience only).
+  // Override via env; for production use scripts/promote-superadmin.js instead.
+  const adminPhone = process.env.SEED_ADMIN_PHONE || '0791234567'
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || 'Admin@123'
   const existingAdmin = await prisma.user.findUnique({ where: { phone: adminPhone } })
 
   if (!existingAdmin) {
-    const passwordHash = await hash('Admin@123', 12)
+    const passwordHash = await hash(adminPassword, 12)
     await prisma.user.create({
       data: {
         phone: adminPhone,
         passwordHash,
         username: 'مدير النظام',
-        role: 'ADMIN',
+        role: 'SUPER_ADMIN',
         storeName: 'توريد',
         city: 'عمّان',
         isVerified: true,
         isActive: true,
       },
     })
-    console.log('✅ Created admin user (0791234567 / Admin@123)')
+    console.log(`✅ Created super admin user (${adminPhone})`)
   } else {
     console.log('ℹ️ Admin user already exists')
   }

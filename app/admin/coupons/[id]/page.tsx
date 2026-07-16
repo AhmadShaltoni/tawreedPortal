@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getDiscountCodeById, getCouponCategoryOptions } from '@/actions/discount-codes'
 import { Card } from '@/components/ui/Card'
 import CouponForm from '../CouponForm'
+import { isAdminLike } from '@/lib/permissions'
 
 export const metadata = {
   title: 'تعديل كود الخصم',
@@ -18,7 +19,7 @@ export default async function EditCouponPage({ params }: PageProps) {
   const { id } = await params
   const user = await getCurrentUser()
 
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     redirect('/login')
   }
 

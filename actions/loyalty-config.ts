@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import type { ActionResponse } from '@/types'
+import { isAdminLike } from '@/lib/permissions'
 
 /**
  * Get loyalty system configuration
@@ -11,7 +12,7 @@ import type { ActionResponse } from '@/types'
 export async function getLoyaltyConfig(): Promise<ActionResponse<any>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
     
@@ -42,7 +43,7 @@ export async function getLoyaltyConfig(): Promise<ActionResponse<any>> {
 export async function updateLoyaltyConfig(formData: FormData): Promise<ActionResponse<any>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
     
@@ -104,7 +105,7 @@ export async function updateLoyaltyConfig(formData: FormData): Promise<ActionRes
 export async function getWelcomeBonusConfig(): Promise<ActionResponse<any>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
     
@@ -133,7 +134,7 @@ export async function getWelcomeBonusConfig(): Promise<ActionResponse<any>> {
 export async function updateWelcomeBonusConfig(formData: FormData): Promise<ActionResponse<any>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
     
@@ -175,7 +176,7 @@ export async function updateWelcomeBonusConfig(formData: FormData): Promise<Acti
 export async function getReferralConfig(): Promise<ActionResponse<any>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
     
@@ -205,7 +206,7 @@ export async function getReferralConfig(): Promise<ActionResponse<any>> {
 export async function updateReferralConfig(formData: FormData): Promise<ActionResponse<any>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'Unauthorized' }
     }
     

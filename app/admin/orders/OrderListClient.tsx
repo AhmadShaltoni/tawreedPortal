@@ -13,6 +13,7 @@ import {
   Star,
   Package,
   PackageSearch,
+  Pencil,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -52,6 +53,7 @@ interface Props {
       quantity: number
       product: { id: string; name: string; image: string | null } | null
     }>
+    _count?: { editRequests: number }
   }>
   total: number
   pages: number
@@ -227,6 +229,12 @@ export function OrderListClient({ orders, total, pages, currentPage, currentStat
                           <span className="font-mono text-xs font-semibold text-blue-900">
                             #{order.orderNumber.slice(-8)}
                           </span>
+                          {!!order._count?.editRequests && (
+                            <span className="ms-2 inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 text-[11px] font-semibold px-2 py-0.5 align-middle" title={t.orderManagement.pendingEdit}>
+                              <Pencil className="w-3 h-3" />
+                              {t.orderManagement.pendingEdit}
+                            </span>
+                          )}
                           {(order.deliveryAddressDetails || order.buyerNotes) && (
                             <div className="flex items-center gap-2 mt-1.5 text-gray-400">
                               {order.deliveryAddressDetails && (
@@ -341,7 +349,15 @@ export function OrderListClient({ orders, total, pages, currentPage, currentStat
                 return (
                   <Link key={order.id} href={`/admin/orders/${order.id}`} className="block p-4 active:bg-blue-50/40">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="font-mono text-xs font-semibold text-blue-900">#{order.orderNumber.slice(-8)}</span>
+                      <span className="font-mono text-xs font-semibold text-blue-900 inline-flex items-center gap-2">
+                        #{order.orderNumber.slice(-8)}
+                        {!!order._count?.editRequests && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold px-1.5 py-0.5">
+                            <Pencil className="w-2.5 h-2.5" />
+                            {t.orderManagement.pendingEdit}
+                          </span>
+                        )}
+                      </span>
                       <StatusPill status={order.status} label={t.orderStatus[order.status as keyof typeof t.orderStatus] ?? order.status} />
                     </div>
                     <div className="flex items-center gap-3 mt-3">

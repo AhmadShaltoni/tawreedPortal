@@ -2,11 +2,12 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { getLoyaltyConfig, getWelcomeBonusConfig, getReferralConfig } from '@/actions/loyalty-config'
 import { ConfigClient } from './ConfigClient'
+import { isAdminLike } from '@/lib/permissions'
 
 export default async function LoyaltyConfigPage() {
   const session = await auth()
 
-  if (!session?.user || session.user.role !== 'ADMIN') {
+  if (!session?.user || !isAdminLike(session.user.role)) {
     redirect('/login')
   }
 

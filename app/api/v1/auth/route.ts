@@ -1,6 +1,11 @@
 import { apiError, apiResponse, corsOptions } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { signInSchema, signUpSchema } from "@/lib/validations";
+import {
+  checkLoginRateLimit,
+  recordFailedLogin,
+  clearLoginRateLimit,
+} from "@/lib/login-rate-limit";
 import { compare, hash } from "bcryptjs";
 import * as jwt from "next-auth/jwt";
 import { NextRequest } from "next/server";
@@ -34,8 +39,20 @@ async function handleLogin(body: Record<string, unknown>) {
       return apiError("صيغة الهاتف أو كلمة المرور غير صحيحة", 400);
     }
 
+    const phone = validated.data.phone;
+
+    // Throttle brute-force attempts before touching the password.
+    const rate = await checkLoginRateLimit(phone);
+    if (!rate.allowed) {
+      const minutes = Math.max(1, Math.ceil(rate.retryAfterSeconds / 60));
+      return apiError(
+        `تم تجاوز عدد محاولات تسجيل الدخول. حاول مرة أخرى بعد ${minutes} دقيقة`,
+        429,
+      );
+    }
+
     const user = await db.user.findUnique({
-      where: { phone: validated.data.phone },
+      where: { phone },
       include: {
         cityRef: { select: { id: true, name: true, nameEn: true } },
         areaRef: { select: { id: true, name: true, nameEn: true } },
@@ -43,6 +60,7 @@ async function handleLogin(body: Record<string, unknown>) {
     });
 
     if (!user || !user.isActive) {
+      await recordFailedLogin(phone);
       return apiError("رقم الهاتف أو كلمة المرور غير صحيحة", 401);
     }
 
@@ -51,8 +69,12 @@ async function handleLogin(body: Record<string, unknown>) {
       user.passwordHash,
     );
     if (!isPasswordValid) {
+      await recordFailedLogin(phone);
       return apiError("رقم الهاتف أو كلمة المرور غير صحيحة", 401);
     }
+
+    // Successful login — reset the throttle counter.
+    await clearLoginRateLimit(phone);
 
     // Register/relink device token if provided
     if (body.deviceToken && body.platform) {

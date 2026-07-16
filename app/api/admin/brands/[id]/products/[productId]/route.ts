@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
+import { isAdminLike } from '@/lib/permissions'
 
 export async function DELETE(
   req: NextRequest,
@@ -9,7 +10,7 @@ export async function DELETE(
   try {
     const { id, productId } = await params
     const user = await getCurrentUser()
-    if (user?.role !== 'ADMIN') {
+    if (!isAdminLike(user?.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

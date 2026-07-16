@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { decode } from 'next-auth/jwt'
 
-type UserRole = 'BUYER' | 'SUPPLIER' | 'ADMIN'
+type UserRole = 'BUYER' | 'SUPPLIER' | 'ADMIN' | 'SUPER_ADMIN' | 'DELIVERY'
 
 interface ApiCityRef {
   id: string

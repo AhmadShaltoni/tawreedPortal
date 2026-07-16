@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
 import { AdminSidebar } from './AdminSidebar'
 import { Bell } from 'lucide-react'
 import Link from 'next/link'
+import { isStaffRole, hasPermission, routePermissionFor, defaultRouteFor } from '@/lib/permissions'
 
 export default async function AdminLayout({
   children,
@@ -15,14 +17,27 @@ export default async function AdminLayout({
     redirect('/login')
   }
 
-  if (session.user.role !== 'ADMIN') {
+  const user = session.user
+
+  if (!isStaffRole(user.role)) {
     redirect('/')
+  }
+
+  // Enforce per-route permission. The pathname is injected by middleware.ts.
+  const pathname = (await headers()).get('x-pathname') ?? '/admin'
+  const required = routePermissionFor(pathname)
+
+  if (required === 'staff') {
+    // Staff management is SUPER_ADMIN-only, enforced by role (not a permission).
+    if (user.role !== 'SUPER_ADMIN') redirect(defaultRouteFor(user))
+  } else if (required && !hasPermission(user, required)) {
+    redirect(defaultRouteFor(user))
   }
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <AdminSidebar />
-      
+      <AdminSidebar role={user.role} permissions={user.permissions} />
+
       <div className="flex-1 flex flex-col">
         {/* Top bar */}
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6">

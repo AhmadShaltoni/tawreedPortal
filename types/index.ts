@@ -2,7 +2,7 @@
 // These types mirror the Prisma schema
 
 // Enums
-export type UserRole = 'BUYER' | 'SUPPLIER' | 'ADMIN'
+export type UserRole = 'BUYER' | 'SUPPLIER' | 'ADMIN' | 'SUPER_ADMIN' | 'DELIVERY'
 export type RequestStatus = 'OPEN' | 'IN_PROGRESS' | 'CLOSED' | 'CANCELLED' | 'EXPIRED'
 export type OfferStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN' | 'EXPIRED'
 export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED'

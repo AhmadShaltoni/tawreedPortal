@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/lib/db'
-import { requireRole } from '@/lib/auth'
+import { requireRole, requirePermission } from '@/lib/auth'
 import { updateOrderStatusSchema } from '@/lib/validations'
 import { createAndSendNotification } from '@/lib/push-notifications'
 import { awardOrderPoints, reverseOrderPoints, awardWelcomeBonus, processReferralRewards } from './loyalty-points'
@@ -34,6 +34,7 @@ export async function getAdminOrders(options?: {
       include: {
         buyer: { select: { id: true, username: true, storeName: true, phone: true, city: true } },
         items: { include: { product: { select: { id: true, name: true, image: true } } } },
+        _count: { select: { editRequests: { where: { status: 'PENDING' } } } },
       },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
@@ -55,21 +56,101 @@ export async function getAdminOrders(options?: {
   return { orders, total, pages: Math.ceil(total / limit), statusCounts }
 }
 
+// Order items only snapshot productName/productImage (no flavor/variant image
+// and no option id). Resolve the most specific image for display by matching
+// the snapshot names against the live product's variants/options:
+// flavor (option) image → size (variant) image → product snapshot image.
+type ItemImageSource = {
+  variantSize: string | null
+  variantSizeEn: string | null
+  variantOptionName: string | null
+  variantOptionNameEn: string | null
+  productImage: string | null
+  product: {
+    image: string | null
+    variants?: Array<{
+      size: string | null
+      sizeEn: string | null
+      image: string | null
+      options: Array<{ name: string; nameEn: string | null; image: string | null }>
+    }>
+  } | null
+}
+
+function resolveItemImage(item: ItemImageSource): string | null {
+  const variants = item.product?.variants ?? []
+  if (variants.length > 0) {
+    const matchedVariant = variants.find(
+      (v) =>
+        (item.variantSize && v.size === item.variantSize) ||
+        (item.variantSizeEn && v.sizeEn === item.variantSizeEn)
+    )
+    // Prefer an option match inside the matched variant, else across all variants
+    if (item.variantOptionName || item.variantOptionNameEn) {
+      for (const v of matchedVariant ? [matchedVariant] : variants) {
+        const opt = v.options.find(
+          (o) =>
+            (item.variantOptionName && o.name === item.variantOptionName) ||
+            (item.variantOptionNameEn && o.nameEn === item.variantOptionNameEn)
+        )
+        if (opt?.image) return opt.image
+      }
+    }
+    if (matchedVariant?.image) return matchedVariant.image
+  }
+  return item.productImage || item.product?.image || null
+}
+
 export async function getAdminOrderById(id: string) {
-  return db.order.findUnique({
+  const order = await db.order.findUnique({
     where: { id },
     include: {
       buyer: { select: { id: true, username: true, email: true, storeName: true, phone: true, city: true, businessAddress: true } },
-      items: { include: { product: { select: { id: true, name: true, nameEn: true, image: true } } } },
+      items: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              nameEn: true,
+              image: true,
+              variants: {
+                select: {
+                  size: true,
+                  sizeEn: true,
+                  image: true,
+                  options: { select: { name: true, nameEn: true, image: true } },
+                },
+              },
+            },
+          },
+        },
+      },
       redeemedReward: {
         include: { reward: { select: { id: true, name: true, nameEn: true } } },
       },
+      editRequests: {
+        where: { status: 'PENDING' },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
     },
   })
+  if (!order) return null
+
+  return {
+    ...order,
+    items: order.items.map((item) => ({
+      ...item,
+      displayImage: resolveItemImage(item),
+    })),
+    pendingEditRequest: order.editRequests[0] ?? null,
+  }
 }
 
 export async function updateAdminOrderStatus(formData: FormData): Promise<ActionResponse> {
-  const { authorized, error } = await requireRole(['ADMIN'])
+  // Delivery reps (DELIVERY) manage order status too — gate on the orders permission.
+  const { authorized, error } = await requirePermission('orders')
   if (!authorized) return { success: false, error: error ?? 'Not authorized' }
 
   const rawData = {

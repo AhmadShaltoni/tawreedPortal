@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { isAdminLike } from '@/lib/permissions'
 import {
   saveProductImage,
   saveCategoryImage,
@@ -33,7 +34,7 @@ type Folder = keyof typeof SAVERS
  */
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser()
-  if (user?.role !== 'ADMIN') {
+  if (!isAdminLike(user?.role)) {
     return NextResponse.json({ error: 'غير مصرح' }, { status: 401 })
   }
 

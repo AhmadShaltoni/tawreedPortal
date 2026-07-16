@@ -5,6 +5,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { redeemRewardForUser, validateCouponForUser } from '@/lib/loyalty-redemption'
 import type { ActionResponse } from '@/types'
 import { revalidatePath } from 'next/cache'
+import { isAdminLike } from '@/lib/permissions'
 
 /**
  * Get rewards catalog with optional filters
@@ -111,7 +112,7 @@ async function parseRewardForm(formData: FormData): Promise<
  */
 export async function createReward(formData: FormData): Promise<ActionResponse> {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     return { success: false, error: 'غير مصرح' }
   }
 
@@ -134,7 +135,7 @@ export async function createReward(formData: FormData): Promise<ActionResponse> 
  */
 export async function updateReward(formData: FormData): Promise<ActionResponse> {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     return { success: false, error: 'غير مصرح' }
   }
 
@@ -164,7 +165,7 @@ export async function updateReward(formData: FormData): Promise<ActionResponse> 
  */
 export async function toggleRewardActive(id: string): Promise<ActionResponse> {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     return { success: false, error: 'غير مصرح' }
   }
 
@@ -190,7 +191,7 @@ export async function toggleRewardActive(id: string): Promise<ActionResponse> {
  */
 export async function deleteReward(id: string): Promise<ActionResponse> {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'ADMIN') {
+  if (!user || !isAdminLike(user.role)) {
     return { success: false, error: 'غير مصرح' }
   }
 
@@ -237,7 +238,7 @@ export async function getUserRedeemedRewards(userId?: string) {
   }
 
   // If not admin, can only view own coupons
-  if (userId && (!user || (user.role !== 'ADMIN' && user.id !== userId))) {
+  if (userId && (!user || (!isAdminLike(user.role) && user.id !== userId))) {
     return []
   }
 

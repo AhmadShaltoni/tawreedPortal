@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { z } from 'zod'
 import type { ActionResponse } from '@/types'
+import { isAdminLike } from '@/lib/permissions'
 
 /**
  * Notice type for responses
@@ -87,7 +88,7 @@ export async function createNotice(
 ): Promise<ActionResponse<NoticeType>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -132,7 +133,7 @@ export async function updateNotice(
 ): Promise<ActionResponse<NoticeType>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -181,7 +182,7 @@ export async function updateNotice(
 export async function disableNotice(id: string): Promise<ActionResponse<NoticeType>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -215,7 +216,7 @@ export async function disableNotice(id: string): Promise<ActionResponse<NoticeTy
 export async function enableNotice(id: string): Promise<ActionResponse<NoticeType>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -251,7 +252,7 @@ export async function getAllNotices(
 ): Promise<ActionResponse<NoticeType[]>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -281,7 +282,7 @@ export async function getAllNotices(
 export async function deleteNotice(id: string): Promise<ActionResponse<void>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 

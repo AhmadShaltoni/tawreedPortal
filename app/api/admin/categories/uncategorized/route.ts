@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
+import { isAdminLike } from '@/lib/permissions'
 
 // The catch-all "Other" category is treated as "uncategorized"
 const UNCATEGORIZED_SLUG = 'other'
@@ -17,7 +18,7 @@ async function getUncategorizedCategoryId(): Promise<string | null> {
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser()
-    if (user?.role !== 'ADMIN') {
+    if (!isAdminLike(user?.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -78,7 +79,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser()
-    if (user?.role !== 'ADMIN') {
+    if (!isAdminLike(user?.role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

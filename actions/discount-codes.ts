@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { createDiscountCodeSchema } from '@/lib/validations'
 import type { ActionResponse, DiscountCodeWithStats, DiscountCodeWithUsages, DiscountCodeWithFullReport } from '@/types'
+import { isAdminLike } from '@/lib/permissions'
 
 interface DiscountCodeType {
   id: string
@@ -55,7 +56,7 @@ export async function createDiscountCode(
 ): Promise<ActionResponse<DiscountCodeType>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -111,7 +112,7 @@ export async function updateDiscountCode(
 ): Promise<ActionResponse<DiscountCodeType>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -171,7 +172,7 @@ export async function updateDiscountCode(
 export async function getAllDiscountCodes(): Promise<ActionResponse<DiscountCodeWithStats[]>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -197,7 +198,7 @@ export async function getDiscountCodeById(
 ): Promise<ActionResponse<DiscountCodeWithUsages>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -234,7 +235,7 @@ export async function toggleDiscountCode(
 ): Promise<ActionResponse<DiscountCodeType>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -263,7 +264,7 @@ export async function deleteDiscountCode(
 ): Promise<ActionResponse<void>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -295,7 +296,7 @@ export async function searchCouponUsers(
 ): Promise<ActionResponse<CouponUserOption[]>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -339,7 +340,7 @@ export async function searchCouponProducts(
 ): Promise<ActionResponse<CouponProductOption[]>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -374,7 +375,7 @@ export async function getCouponCategoryOptions(): Promise<
 > {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
@@ -400,7 +401,7 @@ export async function getDiscountCodeReport(
 ): Promise<ActionResponse<DiscountCodeWithFullReport>> {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || !isAdminLike(user.role)) {
       return { success: false, error: 'غير مصرح بالدخول' }
     }
 
