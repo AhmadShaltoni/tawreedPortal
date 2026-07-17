@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowRight, Languages, Loader2 } from 'lucide-react'
@@ -76,6 +76,7 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<string[]>([])
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [lightbox, setLightbox] = useState<{ src: string; name: string } | null>(null)
+  const handlePreview = useCallback((src: string, name: string) => setLightbox({ src, name }), [])
   const [availableTags, setAvailableTags] = useState<TagOption[]>([])
   
   // Variants
@@ -102,6 +103,15 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
   const [autosaveOn, setAutosaveOn] = useState(false)
   const [draftTick, setDraftTick] = useState(0)
   const bumpDraft = () => setDraftTick((n) => n + 1)
+  // Debounced tick for high-frequency text input, so we don't re-render the
+  // whole form (and the heavy VariantsEditor) on every keystroke — the actual
+  // localStorage write is already debounced by useDraftAutosave.
+  const inputBumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const bumpDraftDebounced = () => {
+    if (inputBumpTimer.current) clearTimeout(inputBumpTimer.current)
+    inputBumpTimer.current = setTimeout(() => bumpDraft(), 400)
+  }
+  useEffect(() => () => { if (inputBumpTimer.current) clearTimeout(inputBumpTimer.current) }, [])
 
   // On mount: offer to restore an unsaved draft, or enable autosave immediately.
   useEffect(() => {
@@ -268,6 +278,10 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
     setIsSubmitting(true)
     setError(null)
     setFieldErrors({})
+    // Freeze autosave for the duration of the save. applyUploadedImages() below
+    // mutates variants, which would otherwise schedule a draft write that lands
+    // AFTER clearDraft() and resurrects the just-saved product as a stale draft.
+    setAutosaveOn(false)
 
     const formData = new FormData(e.currentTarget)
     formData.set('isActive', 'true')
@@ -348,11 +362,13 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
         setError(result.error || 'تعذّر حفظ المنتج، حاول مجدداً')
         setFieldErrors(result.errors || {})
         setIsSubmitting(false)
+        setAutosaveOn(true)
       }
     } catch (err) {
       setUploadProgress(null)
       setError(err instanceof Error ? err.message : 'فشل رفع الصور، تحقق من الاتصال وحاول مجدداً')
       setIsSubmitting(false)
+      setAutosaveOn(true)
     }
   }
 
@@ -413,7 +429,7 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
         </div>
       )}
 
-      <form onSubmit={handleSubmit} onInput={() => { if (autosaveOn) bumpDraft() }} className="space-y-6">
+      <form onSubmit={handleSubmit} onInput={() => { if (autosaveOn) bumpDraftDebounced() }} className="space-y-6">
         {/* Basic Information */}
         <Card>
           <CardHeader>
@@ -614,7 +630,7 @@ export function NewProductForm({ categoryTree, suppliers, defaultSupplierId, bra
             <VariantsEditor
               variants={variants}
               onChange={setVariants}
-              onPreview={(src, name) => setLightbox({ src, name })}
+              onPreview={handlePreview}
               unitTypes={unitTypes}
             />
           </CardContent>

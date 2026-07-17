@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { memo, useState, useEffect } from 'react'
 import { Boxes, ChevronDown, ChevronsDownUp, ChevronsUpDown, Palette, Plus, Star, Trash2, X } from 'lucide-react'
 import { useLanguage } from '@/lib/LanguageContext'
 
@@ -77,7 +77,7 @@ interface Props {
   unitTypes: UnitTypeOption[]
 }
 
-export function VariantsEditor({ variants, onChange, onPreview, unitTypes }: Props) {
+function VariantsEditorInner({ variants, onChange, onPreview, unitTypes }: Props) {
   const { t, dir, lang } = useLanguage()
   const rowDir = dir === 'rtl' ? 'flex-row-reverse' : ''
   // With multiple existing sizes, start collapsed so the list reads as a clean summary
@@ -715,3 +715,8 @@ export function VariantsEditor({ variants, onChange, onPreview, unitTypes }: Pro
     </div>
   )
 }
+
+// Memoized so the parent product form re-rendering on every keystroke (draft
+// autosave tick) doesn't re-render this heavy editor. Relies on the parent
+// passing stable `onChange`/`onPreview`/`unitTypes` references.
+export const VariantsEditor = memo(VariantsEditorInner)

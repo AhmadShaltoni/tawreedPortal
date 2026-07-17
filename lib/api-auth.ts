@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { decode } from 'next-auth/jwt'
+import { isAdminLike, type PermissionKey } from '@/lib/permissions'
 
 type UserRole = 'BUYER' | 'SUPPLIER' | 'ADMIN' | 'SUPER_ADMIN' | 'DELIVERY'
 
@@ -122,6 +123,34 @@ export async function authenticateApiRequest(request: Request): Promise<{ user: 
   }
 
   return { user: null, error: 'Authentication required' }
+}
+
+// Authenticate a mobile/API request as platform staff (ADMIN/SUPER_ADMIN).
+// SUPER_ADMIN always passes; ADMIN must hold the given permission key
+// (mirrors the dashboard's requirePermission). Returns 401 vs 403 status
+// so routes can answer precisely.
+export async function authenticateStaffApiRequest(
+  request: Request,
+  permission: PermissionKey
+): Promise<{ user: ApiUser | null; error: string | null; status: number }> {
+  const { user, error } = await authenticateApiRequest(request)
+  if (!user) return { user: null, error: error ?? 'Authentication required', status: 401 }
+
+  if (!isAdminLike(user.role)) {
+    return { user: null, error: 'غير مصرح بالدخول', status: 403 }
+  }
+
+  if (user.role === 'ADMIN') {
+    const record = await db.user.findUnique({
+      where: { id: user.id },
+      select: { permissions: true },
+    })
+    if (!record?.permissions?.includes(permission)) {
+      return { user: null, error: 'ليس لديك صلاحية الوصول لهذا القسم', status: 403 }
+    }
+  }
+
+  return { user, error: null, status: 200 }
 }
 
 // CORS headers for browser & mobile

@@ -133,6 +133,10 @@ export async function createCategory(formData: FormData): Promise<ActionResponse
   })
 
   revalidatePath('/admin/categories')
+  // The product add/edit forms embed the category tree (server-rendered), so
+  // refresh those routes too — otherwise their dropdowns stay stale until a
+  // hard reload.
+  revalidatePath('/admin/products', 'layout')
   return { success: true, data: { id: category.id } }
 }
 
@@ -253,6 +257,10 @@ export async function updateCategory(id: string, formData: FormData): Promise<Ac
   }
 
   revalidatePath('/admin/categories')
+  // The product add/edit forms embed the category tree (server-rendered), so
+  // refresh those routes too — otherwise their dropdowns stay stale until a
+  // hard reload.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }
 
@@ -279,6 +287,10 @@ export async function deleteCategory(id: string): Promise<ActionResponse> {
 
   await db.category.delete({ where: { id } })
   revalidatePath('/admin/categories')
+  // The product add/edit forms embed the category tree (server-rendered), so
+  // refresh those routes too — otherwise their dropdowns stay stale until a
+  // hard reload.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }
 
@@ -422,6 +434,10 @@ export async function reorderCategories(orderedIds: string[]): Promise<ActionRes
 
   await db.$transaction(updates)
   revalidatePath('/admin/categories')
+  // The product add/edit forms embed the category tree (server-rendered), so
+  // refresh those routes too — otherwise their dropdowns stay stale until a
+  // hard reload.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }
 

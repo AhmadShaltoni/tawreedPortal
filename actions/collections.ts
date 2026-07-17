@@ -59,6 +59,8 @@ export async function createCollection(formData: FormData): Promise<ActionRespon
   })
 
   revalidatePath('/admin/collections')
+  // The new-product form embeds the collections list — keep it fresh.
+  revalidatePath('/admin/products', 'layout')
   return { success: true, data: { id: collection.id } }
 }
 
@@ -118,6 +120,8 @@ export async function updateCollection(id: string, formData: FormData): Promise<
   })
 
   revalidatePath('/admin/collections')
+  // The new-product form embeds the collections list — keep it fresh.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }
 
@@ -135,6 +139,8 @@ export async function deleteCollection(id: string): Promise<ActionResponse> {
   await db.collection.delete({ where: { id } })
 
   revalidatePath('/admin/collections')
+  // The new-product form embeds the collections list — keep it fresh.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }
 
@@ -178,6 +184,8 @@ export async function addProductsToCollection(
   })
 
   revalidatePath('/admin/collections')
+  // The new-product form embeds the collections list — keep it fresh.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }
 
@@ -193,6 +201,8 @@ export async function removeProductFromCollection(
   }).catch(() => null) // Ignore if not found
 
   revalidatePath('/admin/collections')
+  // The new-product form embeds the collections list — keep it fresh.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }
 
@@ -213,6 +223,8 @@ export async function reorderCollectionProducts(
   )
 
   revalidatePath('/admin/collections')
+  // The new-product form embeds the collections list — keep it fresh.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }
 
@@ -232,5 +244,7 @@ export async function reorderCollections(orderedIds: string[]): Promise<ActionRe
   )
 
   revalidatePath('/admin/collections')
+  // The new-product form embeds the collections list — keep it fresh.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }

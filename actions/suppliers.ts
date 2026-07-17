@@ -48,6 +48,8 @@ export async function createSupplier(formData: FormData): Promise<ActionResponse
   })
 
   revalidatePath('/admin/suppliers')
+  // Product add/edit forms embed the supplier list — keep them fresh.
+  revalidatePath('/admin/products', 'layout')
   return { success: true, data: { id: supplier.id } }
 }
 
@@ -76,6 +78,8 @@ export async function updateSupplier(id: string, formData: FormData): Promise<Ac
   })
 
   revalidatePath('/admin/suppliers')
+  // Product add/edit forms embed the supplier list — keep them fresh.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }
 
@@ -96,6 +100,8 @@ export async function deleteSupplier(id: string): Promise<ActionResponse> {
   await db.supplier.delete({ where: { id } })
 
   revalidatePath('/admin/suppliers')
+  // Product add/edit forms embed the supplier list — keep them fresh.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }
 
@@ -113,7 +119,7 @@ export async function setDefaultSupplier(id: string): Promise<ActionResponse> {
   ])
 
   revalidatePath('/admin/suppliers')
-  revalidatePath('/admin/products')
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }
 

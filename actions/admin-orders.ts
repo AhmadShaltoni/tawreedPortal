@@ -3,9 +3,7 @@
 import { db } from '@/lib/db'
 import { requireRole, requirePermission } from '@/lib/auth'
 import { updateOrderStatusSchema } from '@/lib/validations'
-import { createAndSendNotification } from '@/lib/push-notifications'
-import { awardOrderPoints, reverseOrderPoints, awardWelcomeBonus, processReferralRewards } from './loyalty-points'
-import { updateUserCampaignProgress } from './loyalty-campaigns'
+import { applyOrderStatusUpdate } from '@/lib/order-status'
 import type { ActionResponse, AdminDashboardStats, ProductProfitRow } from '@/types'
 import { revalidatePath } from 'next/cache'
 
@@ -164,100 +162,12 @@ export async function updateAdminOrderStatus(formData: FormData): Promise<Action
     return { success: false, errors: validated.error.flatten().fieldErrors }
   }
 
-  const order = await db.order.findUnique({ where: { id: validated.data.orderId } })
-  if (!order) return { success: false, error: 'Order not found' }
-
-  const statusHistory = ((order.statusHistory as Array<Record<string, unknown>>) || [])
-  const statusEntry = {
+  const result = await applyOrderStatusUpdate({
+    orderId: validated.data.orderId,
     status: validated.data.status,
-    timestamp: new Date().toISOString(),
-    note: validated.data.note ?? null,
-  }
-  statusHistory.push(statusEntry)
-
-  await db.order.update({
-    where: { id: validated.data.orderId },
-    data: {
-      status: validated.data.status,
-      statusHistory: statusHistory as any,
-      ...(validated.data.status === 'DELIVERED' ? { actualDelivery: new Date() } : {}),
-    },
+    note: validated.data.note,
   })
-
-  // Notify buyer with push notification — friendly copy, no raw IDs or
-  // English status enums (the notification already deep-links to the order)
-  const statusCopy: Record<string, { title: string; message: string }> = {
-    PENDING: {
-      title: 'تم استلام طلبك',
-      message: 'طلبك قيد المراجعة وسنؤكده قريبًا',
-    },
-    CONFIRMED: {
-      title: 'تم تأكيد طلبك ✅',
-      message: 'تم تأكيد طلبك وسنبدأ بتجهيزه قريبًا',
-    },
-    PROCESSING: {
-      title: 'جاري تجهيز طلبك 📦',
-      message: 'فريقنا يجهّز طلبك الآن',
-    },
-    SHIPPED: {
-      title: 'طلبك في الطريق إليك 🚚',
-      message: 'انطلق مندوبنا بطلبك، سيصلك قريبًا',
-    },
-    DELIVERED: {
-      title: 'تم توصيل طلبك 🎉',
-      message: 'نتمنى أن تنال منتجاتك إعجابك، شكرًا لتسوقك من توريد',
-    },
-    CANCELLED: {
-      title: 'تم إلغاء طلبك',
-      message: 'تم إلغاء طلبك. لأي استفسار تواصل معنا',
-    },
-  }
-  const copy = statusCopy[validated.data.status] ?? {
-    title: 'تحديث حالة الطلب',
-    message: 'تم تحديث حالة طلبك، اضغط لعرض التفاصيل',
-  }
-
-  await createAndSendNotification(order.buyerId, {
-    type: 'ORDER_STATUS_CHANGE',
-    title: copy.title,
-    message: copy.message,
-    linkUrl: `/orders/${order.id}`,
-    data: {
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      status: validated.data.status,
-    },
-  })
-
-  // Loyalty system hooks - when order is cancelled, reverse any earned points
-  if (validated.data.status === 'CANCELLED') {
-    await reverseOrderPoints(validated.data.orderId)
-  }
-
-  // Loyalty system hooks - when order is delivered
-  if (validated.data.status === 'DELIVERED') {
-    // Calculate and award loyalty points (no-op if already awarded on placement)
-    await awardOrderPoints(validated.data.orderId, 'DELIVERED')
-    
-    // Update campaign progress
-    await updateUserCampaignProgress(order.buyerId, validated.data.orderId)
-    
-    // Check if this is the first delivered order for welcome bonus & referral
-    const deliveredOrdersCount = await db.order.count({
-      where: {
-        buyerId: order.buyerId,
-        status: 'DELIVERED',
-      },
-    })
-    
-    if (deliveredOrdersCount === 1) {
-      // First delivered order - check welcome bonus trigger
-      await awardWelcomeBonus(order.buyerId, 'FIRST_DELIVERED_ORDER')
-      
-      // Process referral rewards (if applicable)
-      await processReferralRewards(order.buyerId, 'FIRST_DELIVERED_ORDER')
-    }
-  }
+  if (!result.success) return result
 
   revalidatePath('/admin/orders')
   revalidatePath(`/admin/orders/${validated.data.orderId}`)

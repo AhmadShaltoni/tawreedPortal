@@ -107,10 +107,16 @@ export function clearDraft(key: string) {
 export function useDraftAutosave<T>(key: string, snapshot: T, enabled: boolean, dep?: unknown) {
   const snapshotRef = useRef(snapshot)
   snapshotRef.current = snapshot
+  // Mirror `enabled` in a ref so an already-scheduled write can be aborted at
+  // fire time. Turning autosave off (e.g. right before clearDraft on a
+  // successful save) must guarantee no pending timer resurrects the draft.
+  const enabledRef = useRef(enabled)
+  enabledRef.current = enabled
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return
     const handle = setTimeout(() => {
+      if (!enabledRef.current) return
       try {
         window.localStorage.setItem(storageKey(key), JSON.stringify(snapshotRef.current))
       } catch {

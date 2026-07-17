@@ -361,7 +361,8 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
       },
     })
 
-    // Update ProductOnCategory if categoryIds provided
+    // Update ProductOnCategory if categoryIds provided (full replace: the form
+    // sent the complete primary + additional set).
     if (categoryIdsJson) {
       const categoryIds: string[] = JSON.parse(categoryIdsJson as string)
       const primaryCategoryId = validated.data.categoryId ?? existing.categoryId
@@ -372,6 +373,21 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
           data: { productId: id, categoryId: allCategoryIds[i], isPrimary: i === 0, sortOrder: i },
         })
       }
+    } else if (validated.data.categoryId && validated.data.categoryId !== existing.categoryId) {
+      // No categoryIds sent (e.g. the edit form has no "additional categories"
+      // UI), but the primary category changed. Keep the join table in sync so
+      // the product doesn't linger under its old category: retarget the primary
+      // row and preserve any additional classifications.
+      const newPrimary = validated.data.categoryId
+      await tx.productOnCategory.updateMany({ where: { productId: id }, data: { isPrimary: false } })
+      // Drop the old primary category row (unless it's also kept as additional
+      // — but for a single-primary edit form it never is).
+      await tx.productOnCategory.deleteMany({ where: { productId: id, categoryId: existing.categoryId } })
+      await tx.productOnCategory.upsert({
+        where: { productId_categoryId: { productId: id, categoryId: newPrimary } },
+        create: { productId: id, categoryId: newPrimary, isPrimary: true, sortOrder: 0 },
+        update: { isPrimary: true, sortOrder: 0 },
+      })
     }
 
     // Update tags if tagIds provided

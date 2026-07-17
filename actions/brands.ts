@@ -70,6 +70,9 @@ export async function createBrand(formData: FormData): Promise<ActionResponse<{ 
   })
 
   revalidatePath('/admin/brands')
+  // Product add/edit forms embed the brand list — refresh them so their
+  // dropdown isn't stale until a hard reload.
+  revalidatePath('/admin/products', 'layout')
   return { success: true, data: { id: brand.id } }
 }
 
@@ -134,6 +137,9 @@ export async function updateBrand(id: string, formData: FormData): Promise<Actio
   }
 
   revalidatePath('/admin/brands')
+  // Product add/edit forms embed the brand list — refresh them so their
+  // dropdown isn't stale until a hard reload.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }
 
@@ -158,6 +164,9 @@ export async function deleteBrand(id: string): Promise<ActionResponse> {
   await db.brand.delete({ where: { id } })
 
   revalidatePath('/admin/brands')
+  // Product add/edit forms embed the brand list — refresh them so their
+  // dropdown isn't stale until a hard reload.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }
 
@@ -188,5 +197,8 @@ export async function reorderBrands(orderedIds: string[]): Promise<ActionRespons
   )
 
   revalidatePath('/admin/brands')
+  // Product add/edit forms embed the brand list — refresh them so their
+  // dropdown isn't stale until a hard reload.
+  revalidatePath('/admin/products', 'layout')
   return { success: true }
 }

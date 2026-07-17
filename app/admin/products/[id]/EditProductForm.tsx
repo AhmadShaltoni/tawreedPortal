@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -154,6 +154,7 @@ export function EditProductForm({ product, categoryTree, suppliers, brands, unit
   const [mainImagePreview, setMainImagePreview] = useState<string | null>(null)
   const [mainImageFile, setMainImageFile] = useState<File | null>(null)
   const [lightbox, setLightbox] = useState<{ src: string; name: string } | null>(null)
+  const handlePreview = useCallback((src: string, name: string) => setLightbox({ src, name }), [])
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
@@ -238,6 +239,14 @@ export function EditProductForm({ product, categoryTree, suppliers, brands, unit
   const [autosaveOn, setAutosaveOn] = useState(false)
   const [draftTick, setDraftTick] = useState(0)
   const bumpDraft = () => setDraftTick((n) => n + 1)
+  // Debounced tick for high-frequency text input, so we don't re-render the
+  // whole form (and the heavy VariantsEditor) on every keystroke.
+  const inputBumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const bumpDraftDebounced = () => {
+    if (inputBumpTimer.current) clearTimeout(inputBumpTimer.current)
+    inputBumpTimer.current = setTimeout(() => bumpDraft(), 400)
+  }
+  useEffect(() => () => { if (inputBumpTimer.current) clearTimeout(inputBumpTimer.current) }, [])
 
   useEffect(() => {
     const draft = loadDraft<ProductDraft>(DRAFT_KEY)
@@ -315,9 +324,22 @@ export function EditProductForm({ product, categoryTree, suppliers, brands, unit
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+
+    // Guard against silently keeping the old category when the select is empty.
+    // An empty categoryId is dropped server-side (partial update), which would
+    // look like "the change didn't apply". Force an explicit selection instead.
+    if (!finalCategoryId) {
+      setError(null)
+      setFieldErrors({ categoryId: [t.productManagement.selectCategory || 'اختر صنف'] })
+      return
+    }
+
     setIsSubmitting(true)
     setError(null)
     setFieldErrors({})
+    // Freeze autosave for the duration of the save so a draft write can't land
+    // after clearDraft() and resurrect the just-saved edits as a stale draft.
+    setAutosaveOn(false)
 
     const formData = new FormData(e.currentTarget)
     formData.set('isActive', String(product.isActive))
@@ -395,11 +417,13 @@ export function EditProductForm({ product, categoryTree, suppliers, brands, unit
         setError(result.error || 'تعذّر حفظ التعديلات، حاول مجدداً')
         setFieldErrors(result.errors || {})
         setIsSubmitting(false)
+        setAutosaveOn(true)
       }
     } catch (err) {
       setUploadProgress(null)
       setError(err instanceof Error ? err.message : 'فشل رفع الصور، تحقق من الاتصال وحاول مجدداً')
       setIsSubmitting(false)
+      setAutosaveOn(true)
     }
   }
 
@@ -455,7 +479,7 @@ export function EditProductForm({ product, categoryTree, suppliers, brands, unit
         </div>
       )}
 
-      <form onSubmit={handleSubmit} onInput={() => { if (autosaveOn) bumpDraft() }}>
+      <form onSubmit={handleSubmit} onInput={() => { if (autosaveOn) bumpDraftDebounced() }}>
         <Card>
           <CardHeader>
             <h2 className="text-lg font-semibold text-gray-900">{t.productManagement.editProduct}</h2>
@@ -608,7 +632,7 @@ export function EditProductForm({ product, categoryTree, suppliers, brands, unit
             <VariantsEditor
               variants={variants}
               onChange={setVariants}
-              onPreview={(src, name) => setLightbox({ src, name })}
+              onPreview={handlePreview}
               unitTypes={unitTypes}
             />
           </CardContent>

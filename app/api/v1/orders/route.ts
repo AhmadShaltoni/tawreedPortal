@@ -508,6 +508,9 @@ export async function POST(request: NextRequest) {
       orderId: order.id,
       orderNumber: order.orderNumber,
       linkUrl: `/admin/orders/${order.id}`,
+      // Structured target so the mobile app opens the admin order screen
+      targetType: 'ADMIN_ORDER',
+      targetId: order.id,
     },
   }).catch((err) => console.error('Failed to send new order push to admins:', err))
 
