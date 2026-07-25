@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { signIn, signOut } from '@/lib/auth'
 import { signUpSchema, signInSchema } from '@/lib/validations'
 import { checkLoginRateLimit, recordFailedLogin, clearLoginRateLimit } from '@/lib/login-rate-limit'
+import { isPhoneBlocked, BLOCKED_PHONE_MESSAGE } from '@/lib/account/phone-block'
 import { createUserReferral } from './loyalty-referrals'
 import { awardWelcomeBonus, processReferralRewards } from './loyalty-points'
 import type { ActionResponse } from '@/types'
@@ -36,6 +37,11 @@ export async function registerUser(formData: FormData): Promise<ActionResponse> 
   }
 
   const { username, phone, password, storeName, email, role, businessAddress, city } = validated.data
+
+  // Reject blocked phone numbers before creating anything.
+  if (await isPhoneBlocked(phone)) {
+    return { success: false, error: BLOCKED_PHONE_MESSAGE }
+  }
 
   // Check if user already exists by phone
   const existingUserByPhone = await db.user.findUnique({

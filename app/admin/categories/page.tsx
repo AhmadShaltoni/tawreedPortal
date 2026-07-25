@@ -6,13 +6,36 @@ import { CategoryListClient } from './CategoryListClient'
 
 const UNCATEGORIZED_SLUG = 'other'
 
-async function getUncategorizedCount(): Promise<number> {
-  const other = await db.category.findFirst({
-    where: { slug: UNCATEGORIZED_SLUG },
+// Resolve the catch-all "Other" category robustly (an Arabic-only name yields the
+// slug "untitled", not "other"), so the banner never silently reads 0.
+async function getUncategorizedCategoryId(): Promise<string | null> {
+  const category = await db.category.findFirst({
+    where: {
+      OR: [
+        { slug: UNCATEGORIZED_SLUG },
+        { nameEn: { equals: 'Other', mode: 'insensitive' } },
+        { name: 'أخرى' },
+      ],
+    },
     select: { id: true },
   })
-  if (!other) return 0
-  return db.product.count({ where: { categoryId: other.id } })
+  return category?.id ?? null
+}
+
+// Products needing categorization come in two groups: those in the catch-all
+// "Other" bucket, and those sitting on a root category that owns subcategories.
+async function getUncategorizedCounts(): Promise<{ other: number; noSubcategory: number; total: number }> {
+  const otherId = await getUncategorizedCategoryId()
+  const [other, noSubcategory] = await Promise.all([
+    otherId ? db.product.count({ where: { categoryId: otherId } }) : Promise.resolve(0),
+    db.product.count({
+      where: {
+        category: { parentId: null, children: { some: {} } },
+        ...(otherId ? { NOT: { categoryId: otherId } } : {}),
+      },
+    }),
+  ])
+  return { other, noSubcategory, total: other + noSubcategory }
 }
 
 export default async function AdminCategoriesPage({
@@ -23,11 +46,11 @@ export default async function AdminCategoriesPage({
   const params = await searchParams
   const parentId = params.parent || null
 
-  const [categories, breadcrumb, parentCategory, uncategorizedCount] = await Promise.all([
+  const [categories, breadcrumb, parentCategory, uncategorizedCounts] = await Promise.all([
     getCategories(true, parentId),
     parentId ? getCategoryBreadcrumb(parentId) : Promise.resolve([]),
     parentId ? getCategoryById(parentId) : Promise.resolve(null),
-    parentId ? Promise.resolve(0) : getUncategorizedCount(),
+    parentId ? Promise.resolve({ other: 0, noSubcategory: 0, total: 0 }) : getUncategorizedCounts(),
   ])
 
   return (
@@ -44,11 +67,15 @@ export default async function AdminCategoriesPage({
             </div>
             <div>
               <p className="font-medium text-gray-900">منتجات بدون تصنيف</p>
-              <p className="text-xs text-gray-600">منتجات لم تُصنّف بعد — اضغط لنقلها إلى التصنيف المناسب</p>
+              <p className="text-xs text-gray-600">
+                {uncategorizedCounts.total > 0
+                  ? `${uncategorizedCounts.other} في «أخرى» · ${uncategorizedCounts.noSubcategory} بدون تصنيف فرعي — اضغط للنقل`
+                  : 'منتجات لم تُصنّف بعد — اضغط لنقلها إلى التصنيف المناسب'}
+              </p>
             </div>
           </div>
           <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-200 text-amber-800 text-sm font-semibold">
-            {uncategorizedCount} منتج
+            {uncategorizedCounts.total} منتج
           </span>
         </Link>
       )}

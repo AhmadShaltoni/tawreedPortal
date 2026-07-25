@@ -9,6 +9,7 @@ import {
 import { compare, hash } from "bcryptjs";
 import * as jwt from "next-auth/jwt";
 import { NextRequest } from "next/server";
+import { isPhoneBlocked, BLOCKED_PHONE_MESSAGE } from "@/lib/account/phone-block";
 
 // Handle preflight requests
 export async function OPTIONS() {
@@ -154,6 +155,11 @@ async function handleRegister(body: Record<string, unknown>) {
       const firstError =
         Object.values(errors)[0]?.[0] || "فشل التحقق من البيانات";
       return apiError(firstError, 400);
+    }
+
+    // رفض الأرقام المحظورة قبل أي إنشاء
+    if (await isPhoneBlocked(validated.data.phone)) {
+      return apiError(BLOCKED_PHONE_MESSAGE, 403);
     }
 
     // التحقق من وجود رقم الهاتف

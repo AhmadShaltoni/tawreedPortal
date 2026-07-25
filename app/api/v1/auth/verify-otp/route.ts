@@ -6,6 +6,7 @@ import { verifyOtp } from '@/lib/otp'
 import { normalizeJordanPhone } from '@/lib/otp'
 import { db } from '@/lib/db'
 import { encode } from 'next-auth/jwt'
+import { isPhoneBlocked, BLOCKED_PHONE_MESSAGE } from '@/lib/account/phone-block'
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,6 +36,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'رقم الهاتف غير صالح' },
         { status: 400 }
+      )
+    }
+
+    // Reject phones the admin has blocked from creating/using accounts.
+    if (await isPhoneBlocked(normalizedPhone)) {
+      return NextResponse.json(
+        { success: false, error: BLOCKED_PHONE_MESSAGE },
+        { status: 403 }
       )
     }
 

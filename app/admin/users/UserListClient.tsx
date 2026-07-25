@@ -3,13 +3,13 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { Plus, Search, Trash2 } from 'lucide-react'
+import { Plus, Search, Trash2, Ban, ShieldX } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { useLanguage } from '@/lib/LanguageContext'
 import { formatDate } from '@/lib/utils'
-import { toggleUserActive, deleteUser } from '@/actions/users'
+import { toggleUserActive, deleteUser, blockUser } from '@/actions/users'
 
 interface Props {
   users: Array<{
@@ -37,6 +37,9 @@ export function UserListClient({ users, total, pages, currentPage, currentRole, 
   const [search, setSearch] = useState(currentSearch || '')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [blockAlso, setBlockAlso] = useState(false)
+  const [blockConfirm, setBlockConfirm] = useState<string | null>(null)
+  const [blocking, setBlocking] = useState(false)
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -59,9 +62,10 @@ export function UserListClient({ users, total, pages, currentPage, currentRole, 
 
   async function handleDeleteUser(id: string) {
     setDeleting(true)
-    const response = await deleteUser(id)
+    const response = await deleteUser(id, { block: blockAlso })
     setDeleting(false)
     setDeleteConfirm(null)
+    setBlockAlso(false)
 
     if (response.success) {
       router.refresh()
@@ -70,16 +74,37 @@ export function UserListClient({ users, total, pages, currentPage, currentRole, 
     }
   }
 
+  async function handleBlockUser(id: string) {
+    setBlocking(true)
+    const response = await blockUser(id)
+    setBlocking(false)
+    setBlockConfirm(null)
+
+    if (response.success) {
+      router.refresh()
+    } else {
+      alert(response.error || t.userManagement.blockError)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className={`flex items-center justify-between ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
         <h1 className="text-2xl font-bold text-gray-900">{t.userManagement.title}</h1>
-        <Link href="/admin/users/new">
-          <Button variant="primary" className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
-            <Plus className="w-4 h-4" />
-            {t.userManagement.addUser}
-          </Button>
-        </Link>
+        <div className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+          <Link href="/admin/users/blocked">
+            <Button variant="ghost" className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+              <ShieldX className="w-4 h-4" />
+              {t.userManagement.blockedPhones}
+            </Button>
+          </Link>
+          <Link href="/admin/users/new">
+            <Button variant="primary" className={`flex items-center gap-2 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+              <Plus className="w-4 h-4" />
+              {t.userManagement.addUser}
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}
@@ -159,6 +184,18 @@ export function UserListClient({ users, total, pages, currentPage, currentRole, 
                             <Button variant="ghost" size="sm" onClick={() => handleToggleActive(user.id)}>
                               {user.isActive ? t.userManagement.inactive : t.userManagement.active}
                             </Button>
+                            {(user.role === 'BUYER' || user.role === 'SUPPLIER') && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setBlockConfirm(user.id)}
+                                className="text-amber-600 hover:bg-amber-50"
+                                disabled={blocking}
+                              >
+                                <Ban className="w-4 h-4" />
+                                {t.userManagement.block}
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -207,13 +244,22 @@ export function UserListClient({ users, total, pages, currentPage, currentRole, 
               <p className={`text-gray-600 mb-2 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
                 {t.userManagement.deleteConfirm}
               </p>
-              <p className={`text-sm text-red-600 mb-6 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
-                {t.userManagement.deleteWarning}
+              <p className={`text-sm text-gray-500 mb-4 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
+                {t.userManagement.deleteKeepsOrders}
               </p>
+              <label className={`flex items-center gap-2 mb-6 cursor-pointer select-none ${dir === 'rtl' ? 'flex-row-reverse justify-end' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={blockAlso}
+                  onChange={(e) => setBlockAlso(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">{t.userManagement.blockAndDelete}</span>
+              </label>
               <div className={`flex gap-3 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
                 <Button
                   variant="ghost"
-                  onClick={() => setDeleteConfirm(null)}
+                  onClick={() => { setDeleteConfirm(null); setBlockAlso(false) }}
                   disabled={deleting}
                   className="flex-1"
                 >
@@ -226,6 +272,40 @@ export function UserListClient({ users, total, pages, currentPage, currentRole, 
                   className="flex-1 bg-red-600 hover:bg-red-700"
                 >
                   {deleting ? t.common.deleting : t.userManagement.delete}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Block Confirmation Dialog */}
+      {blockConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-96">
+            <CardContent className="p-6">
+              <h2 className={`text-lg font-bold mb-2 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
+                {t.userManagement.blockUser}
+              </h2>
+              <p className={`text-gray-600 mb-6 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
+                {t.userManagement.blockConfirm}
+              </p>
+              <div className={`flex gap-3 ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                <Button
+                  variant="ghost"
+                  onClick={() => setBlockConfirm(null)}
+                  disabled={blocking}
+                  className="flex-1"
+                >
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => handleBlockUser(blockConfirm)}
+                  disabled={blocking}
+                  className="flex-1 bg-amber-600 hover:bg-amber-700"
+                >
+                  {blocking ? t.common.loading : t.userManagement.block}
                 </Button>
               </div>
             </CardContent>

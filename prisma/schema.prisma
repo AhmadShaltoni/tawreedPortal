@@ -1027,12 +1027,29 @@ model DeletedUserCouponUsage {
 // deleting and re-registering with the same phone number.
 model DeletedAccountRecord {
   id                   String    @id @default(cuid())
-  
+
   phoneNumberHash      String    @unique  // HMAC-SHA256 of normalized phone (E.164)
   welcomeBonusReceived Boolean   @default(false)
   referralInviteeUsed  Boolean   @default(false)
   deletedAt            DateTime  @default(now())
-  
+
+  @@index([phoneNumberHash])
+}
+
+// Blocklist of phone numbers barred from registering (or re-registering) an
+// account. Set by an admin from the dashboard. Keyed by the same HMAC-SHA256
+// phone hash used for deleted-account records so a blocked number stays blocked
+// even after the original account is deleted. The plaintext phone is never
+// stored; `phoneMasked` (e.g. 07****98) is kept only for admin display/unblock.
+model BlockedPhone {
+  id              String    @id @default(cuid())
+
+  phoneNumberHash String    @unique  // HMAC-SHA256 of normalized phone (E.164)
+  phoneMasked     String?            // e.g. 079****98 — for admin display only
+  reason          String?            // optional note from the admin
+  blockedById     String?            // admin user id who created the block
+  createdAt       DateTime  @default(now())
+
   @@index([phoneNumberHash])
 }
 

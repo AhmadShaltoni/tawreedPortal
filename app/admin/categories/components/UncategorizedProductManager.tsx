@@ -5,13 +5,22 @@ import { Search, X, Loader2, ChevronLeft, ChevronRight, Check, Package, FolderTr
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 
+type UncategorizedGroup = 'other' | 'no-subcategory'
+
 interface ProductItem {
   id: string
   name: string
   nameEn?: string | null
   image?: string | null
   isActive: boolean
-  category?: { id: string; name: string } | null
+  category?: { id: string; name: string; parentId?: string | null } | null
+  group: UncategorizedGroup
+}
+
+interface GroupCounts {
+  other: number
+  noSubcategory: number
+  total: number
 }
 
 interface PaginatedResponse {
@@ -19,7 +28,10 @@ interface PaginatedResponse {
   total: number
   page: number
   totalPages: number
+  counts: GroupCounts
 }
+
+type GroupFilter = 'all' | UncategorizedGroup
 
 export interface CategoryOption {
   id: string
@@ -33,9 +45,11 @@ export function UncategorizedProductManager({ categories }: { categories: Catego
   const [total, setTotal] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+  const [counts, setCounts] = useState<GroupCounts>({ other: 0, noSubcategory: 0, total: 0 })
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
+  const [group, setGroup] = useState<GroupFilter>('all')
 
   // Selection / assignment
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -48,6 +62,7 @@ export function UncategorizedProductManager({ categories }: { categories: Catego
       const params = new URLSearchParams({
         page: page.toString(),
         limit: '30',
+        group,
       })
       if (searchQuery.trim()) params.set('q', searchQuery.trim())
 
@@ -58,13 +73,14 @@ export function UncategorizedProductManager({ categories }: { categories: Catego
         setTotal(data.total)
         setCurrentPage(data.page)
         setTotalPages(data.totalPages)
+        if (data.counts) setCounts(data.counts)
       }
     } catch (err) {
       console.error('Failed to load products:', err)
     } finally {
       setIsLoading(false)
     }
-  }, [searchQuery])
+  }, [searchQuery, group])
 
   // Load on filter change (debounced for search)
   useEffect(() => {
@@ -74,7 +90,7 @@ export function UncategorizedProductManager({ categories }: { categories: Catego
     }
     loadProducts(1)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery])
+  }, [searchQuery, group])
 
   function toggleSelection(productId: string) {
     setSelected((prev) => {
@@ -113,8 +129,16 @@ export function UncategorizedProductManager({ categories }: { categories: Catego
 
       // Remove assigned products from the uncategorized list locally
       const assignedIds = new Set(selected)
+      const removed = products.filter((p) => assignedIds.has(p.id))
+      const removedOther = removed.filter((p) => p.group === 'other').length
+      const removedNoSub = removed.length - removedOther
       setProducts((prev) => prev.filter((p) => !assignedIds.has(p.id)))
-      setTotal((prev) => Math.max(0, prev - assignedIds.size))
+      setTotal((prev) => Math.max(0, prev - removed.length))
+      setCounts((prev) => ({
+        other: Math.max(0, prev.other - removedOther),
+        noSubcategory: Math.max(0, prev.noSubcategory - removedNoSub),
+        total: Math.max(0, prev.total - removed.length),
+      }))
       setSelected(new Set())
       setTargetCategory('')
     } catch (err) {
@@ -135,6 +159,34 @@ export function UncategorizedProductManager({ categories }: { categories: Catego
       {/* Filters */}
       <Card>
         <CardContent className="space-y-3">
+          {/* Group tabs */}
+          <div className="flex flex-wrap gap-2">
+            {([
+              { key: 'all', label: 'الكل', count: counts.total },
+              { key: 'other', label: 'في «أخرى»', count: counts.other },
+              { key: 'no-subcategory', label: 'بدون تصنيف فرعي', count: counts.noSubcategory },
+            ] as const).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setGroup(tab.key)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  group === tab.key
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {tab.label}
+                <span
+                  className={`rounded-full px-1.5 text-[10px] font-semibold ${
+                    group === tab.key ? 'bg-white/25 text-white' : 'bg-white text-gray-500'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
           {/* Search */}
           <div className="relative">
             <Search className="absolute right-3 top-2.5 w-4 h-4 text-gray-400" />
@@ -270,9 +322,20 @@ export function UncategorizedProductManager({ categories }: { categories: Catego
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
-                        {product.nameEn && (
-                          <p className="text-xs text-gray-500 truncate">{product.nameEn}</p>
-                        )}
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span
+                            className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                              product.group === 'other'
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-purple-100 text-purple-700'
+                            }`}
+                          >
+                            {product.group === 'other' ? 'في «أخرى»' : 'بدون تصنيف فرعي'}
+                          </span>
+                          {product.category?.name && (
+                            <span className="text-[11px] text-gray-400 truncate">{product.category.name}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </label>
