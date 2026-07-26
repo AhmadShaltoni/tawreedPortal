@@ -545,6 +545,50 @@ export interface ProductProfitRow {
   missingCostData: boolean // True if some sold items have no wholesale price
 }
 
+// Per-product row for the Sales & Marketing insights hub. Merges catalog pricing
+// (representative unit: selling vs. wholesale) with delivered-sales performance
+// over the selected date range.
+export interface ProductInsightRow {
+  productId: string
+  productName: string
+  productImage: string | null
+  categoryName: string
+  // Catalog pricing (from the product's representative selling unit)
+  unitLabel: string | null
+  sellingPrice: number | null   // JOD, representative unit
+  wholesalePrice: number | null // JOD cost, representative unit (null = missing)
+  hasCostData: boolean
+  marginPercent: number | null  // (price − cost) / price × 100
+  profitPerUnit: number | null  // price − cost (JOD)
+  maxDiscountPercent: number | null // Largest discount that still keeps ≥ floor margin
+  // Inventory
+  stock: number
+  lowStock: boolean
+  onOffer: boolean              // Already covered by an active discount campaign / compareAt
+  // Delivered-sales performance in the selected range
+  quantitySold: number
+  revenue: number              // JOD
+  soldProfit: number           // JOD, realized profit from sales
+  orderCount: number           // distinct delivered orders containing this product
+}
+
+export interface SalesMarketingInsights {
+  products: ProductInsightRow[]
+  summary: {
+    productCount: number          // active products in catalog
+    withCostData: number
+    missingCostData: number
+    avgMarginPercent: number      // averaged over products with cost data
+    totalQuantitySold: number
+    totalRevenue: number          // JOD, delivered in range
+    totalProfit: number           // JOD, delivered in range
+    totalOrders: number           // distinct delivered orders in range
+    lowStockCount: number
+    offerOpportunityCount: number // high-margin products not already on offer
+    onOfferCount: number
+  }
+}
+
 // UI types
 export interface SelectOption {
   value: string

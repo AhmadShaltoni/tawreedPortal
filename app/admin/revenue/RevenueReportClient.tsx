@@ -86,12 +86,20 @@ export function RevenueReportClient() {
           <ArrowRight className={`w-5 h-5 ${dir === 'rtl' ? '' : 'rotate-180'}`} />
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">{tr.title || 'تقرير الإيرادات والأرباح'}</h1>
-        <Link
-          href="/admin/revenue/products"
-          className={`text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 px-4 py-2 rounded-lg transition-colors ${dir === 'rtl' ? 'mr-auto' : 'ml-auto'}`}
-        >
-          {tr.byProduct || 'الأرباح حسب المنتج'} →
-        </Link>
+        <div className={`flex items-center gap-2 ${dir === 'rtl' ? 'mr-auto flex-row-reverse' : 'ml-auto'}`}>
+          <Link
+            href="/admin/revenue/insights"
+            className="text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors"
+          >
+            مركز المبيعات والتسويق →
+          </Link>
+          <Link
+            href="/admin/revenue/products"
+            className="text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 px-4 py-2 rounded-lg transition-colors"
+          >
+            {tr.byProduct || 'الأرباح حسب المنتج'} →
+          </Link>
+        </div>
       </div>
 
       <p className="text-sm text-gray-400">{tr.deliveredNote || 'تُحتسب الطلبات المُسلَّمة فقط'}</p>
