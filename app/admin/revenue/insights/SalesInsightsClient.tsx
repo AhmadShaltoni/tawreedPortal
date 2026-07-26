@@ -15,6 +15,8 @@ import {
   Coins,
   ShoppingBag,
   Download,
+  PlusCircle,
+  PackageX,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { useLanguage } from '@/lib/LanguageContext'
@@ -23,7 +25,9 @@ import { getSalesMarketingInsights } from '@/actions/marketing-insights'
 import type { ProductInsightRow, SalesMarketingInsights } from '@/types'
 
 type DateFilter = 'all-time' | 'current-month' | 'last-30-days' | 'last-7-days' | 'custom'
-type Tab = 'profit' | 'bestsellers' | 'offers' | 'review'
+type Tab = 'profit' | 'bestsellers' | 'offers' | 'lowstock' | 'nocost' | 'weak'
+
+const LOW_STOCK_THRESHOLD = 10 // keep in sync with actions/marketing-insights.ts
 
 function getDateRange(filter: DateFilter, customFrom?: string, customTo?: string): { from?: string; to?: string } {
   const now = new Date()
@@ -49,6 +53,7 @@ function getDateRange(filter: DateFilter, customFrom?: string, customTo?: string
 
 const ARF = new Intl.NumberFormat('ar-JO')
 const nf = (n: number) => ARF.format(Math.round(n))
+const productHref = (id: string) => `/admin/products/${id}`
 
 // Single-hue magnitude bar (rounded ends, recessive track). Fills from the
 // inline-start, so it naturally reads right-to-left inside the RTL layout.
@@ -71,9 +76,10 @@ function MarginPill({ margin }: { margin: number | null }) {
   return <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${tone}`}>{margin.toFixed(1)}%</span>
 }
 
+// Whole cell is a link to the product's edit page.
 function ProductCell({ row }: { row: ProductInsightRow }) {
   return (
-    <div className="flex items-center gap-3">
+    <Link href={productHref(row.productId)} className="group flex items-center gap-3" title="فتح تفاصيل المنتج">
       {row.productImage ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={row.productImage} alt={row.productName} className="rounded-md object-cover w-9 h-9 shrink-0" />
@@ -81,10 +87,10 @@ function ProductCell({ row }: { row: ProductInsightRow }) {
         <div className="w-9 h-9 rounded-md bg-gray-100 shrink-0" />
       )}
       <div className="min-w-0">
-        <div className="text-gray-900 font-medium truncate">{row.productName}</div>
+        <div className="text-gray-900 font-medium truncate group-hover:text-blue-700 group-hover:underline">{row.productName}</div>
         <div className="text-xs text-gray-400 truncate">{row.categoryName}</div>
       </div>
-    </div>
+    </Link>
   )
 }
 
@@ -136,10 +142,18 @@ export function SalesInsightsClient() {
         .sort((a, b) => (b.marginPercent ?? 0) - (a.marginPercent ?? 0)),
     [rows],
   )
-  const reviewRows = useMemo(
+  const lowStockRows = useMemo(
+    () => [...rows].filter((r) => r.lowStock).sort((a, b) => a.stock - b.stock),
+    [rows],
+  )
+  const noCostRows = useMemo(
+    () => [...rows].filter((r) => !r.hasCostData).sort((a, b) => b.quantitySold - a.quantitySold),
+    [rows],
+  )
+  const weakRows = useMemo(
     () =>
       [...rows]
-        .filter((r) => !r.hasCostData || (r.marginPercent ?? 99) < 10 || r.stock <= 0)
+        .filter((r) => r.hasCostData && (r.marginPercent ?? 99) < 10)
         .sort((a, b) => (a.marginPercent ?? 999) - (b.marginPercent ?? 999)),
     [rows],
   )
@@ -148,13 +162,22 @@ export function SalesInsightsClient() {
     { key: 'profit', label: 'الأكثر ربحاً', icon: TrendingUp, count: rows.length },
     { key: 'bestsellers', label: 'الأكثر مبيعاً', icon: Trophy, count: bestSellers.length },
     { key: 'offers', label: 'فرص العروض', icon: Tag, count: offerRows.length },
-    { key: 'review', label: 'يحتاج مراجعة', icon: AlertTriangle, count: reviewRows.length },
+    { key: 'lowstock', label: 'مخزون منخفض', icon: PackageX, count: lowStockRows.length },
+    { key: 'nocost', label: 'بدون سعر جملة', icon: AlertTriangle, count: noCostRows.length },
+    { key: 'weak', label: 'هوامش ضعيفة', icon: Percent, count: weakRows.length },
   ]
 
+  const activeRows =
+    tab === 'profit' ? profitRows
+    : tab === 'bestsellers' ? bestSellers
+    : tab === 'offers' ? offerRows
+    : tab === 'lowstock' ? lowStockRows
+    : tab === 'nocost' ? noCostRows
+    : weakRows
+
   function exportCsv() {
-    const active = tab === 'profit' ? profitRows : tab === 'bestsellers' ? bestSellers : tab === 'offers' ? offerRows : reviewRows
     const header = ['المنتج', 'التصنيف', 'سعر البيع', 'سعر الجملة', 'ربح الوحدة', 'نسبة الربح %', 'المخزون', 'الكمية المباعة', 'الإيراد', 'الربح المحقق', 'أقصى خصم %']
-    const lines = active.map((r) =>
+    const lines = activeRows.map((r) =>
       [
         r.productName, r.categoryName,
         r.sellingPrice ?? '', r.wholesalePrice ?? '', r.profitPerUnit ?? '',
@@ -241,19 +264,16 @@ export function SalesInsightsClient() {
         </div>
       ) : (
         <>
-          {/* KPI cards */}
+          {/* KPI cards — some jump to the matching tab */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Kpi icon={Coins} tone="bg-purple-500" label="إجمالي الإيرادات" value={formatCurrency(s.totalRevenue)} />
-            <Kpi icon={TrendingUp} tone="bg-green-500" label="إجمالي الربح المحقق" value={formatCurrency(s.totalProfit)}
-              valueClass="text-green-600" />
+            <Kpi icon={TrendingUp} tone="bg-green-500" label="إجمالي الربح المحقق" value={formatCurrency(s.totalProfit)} valueClass="text-green-600" />
             <Kpi icon={Percent} tone="bg-blue-500" label="متوسط نسبة الربح" value={`${s.avgMarginPercent.toFixed(1)}%`} />
             <Kpi icon={ShoppingBag} tone="bg-amber-500" label="عدد الطلبات المُسلَّمة" value={nf(s.totalOrders)} />
-            <Kpi icon={Tag} tone="bg-emerald-500" label="منتجات صالحة للعروض" value={nf(s.offerOpportunityCount)} />
-            <Kpi icon={Package} tone="bg-orange-500" label="مخزون منخفض" value={nf(s.lowStockCount)}
-              valueClass={s.lowStockCount > 0 ? 'text-orange-600' : ''} />
-            <Kpi icon={AlertTriangle} tone="bg-red-500" label="بدون سعر جملة" value={nf(s.missingCostData)}
-              valueClass={s.missingCostData > 0 ? 'text-red-600' : ''} />
-            <Kpi icon={Trophy} tone="bg-slate-500" label="منتجات نشطة" value={nf(s.productCount)} />
+            <Kpi icon={Tag} tone="bg-emerald-500" label="منتجات صالحة للعروض" value={nf(s.offerOpportunityCount)} onClick={() => setTab('offers')} />
+            <Kpi icon={PackageX} tone="bg-orange-500" label="مخزون منخفض" value={nf(s.lowStockCount)} valueClass={s.lowStockCount > 0 ? 'text-orange-600' : ''} onClick={() => setTab('lowstock')} />
+            <Kpi icon={AlertTriangle} tone="bg-red-500" label="بدون سعر جملة" value={nf(s.missingCostData)} valueClass={s.missingCostData > 0 ? 'text-red-600' : ''} onClick={() => setTab('nocost')} />
+            <Kpi icon={Package} tone="bg-slate-500" label="منتجات نشطة" value={nf(s.productCount)} />
           </div>
 
           {/* Tabs */}
@@ -283,7 +303,9 @@ export function SalesInsightsClient() {
               {tab === 'profit' && <ProfitTable rows={profitRows} maxProfit={maxProfit} dir={dir} />}
               {tab === 'bestsellers' && <BestSellersTable rows={bestSellers} maxQty={maxQty} dir={dir} />}
               {tab === 'offers' && <OffersTable rows={offerRows} dir={dir} />}
-              {tab === 'review' && <ReviewTable rows={reviewRows} dir={dir} />}
+              {tab === 'lowstock' && <LowStockTable rows={lowStockRows} dir={dir} />}
+              {tab === 'nocost' && <NoCostTable rows={noCostRows} dir={dir} />}
+              {tab === 'weak' && <WeakMarginTable rows={weakRows} dir={dir} />}
             </CardContent>
           </Card>
         </>
@@ -292,24 +314,30 @@ export function SalesInsightsClient() {
   )
 }
 
-function Kpi({ icon: Icon, tone, label, value, valueClass }: {
-  icon: typeof Coins; tone: string; label: string; value: string; valueClass?: string
+function Kpi({ icon: Icon, tone, label, value, valueClass, onClick }: {
+  icon: typeof Coins; tone: string; label: string; value: string; valueClass?: string; onClick?: () => void
 }) {
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${tone} shrink-0`}>
-            <Icon className="w-5 h-5 text-white" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs text-gray-500 truncate">{label}</p>
-            <p className={`text-lg font-bold text-gray-900 ${valueClass ?? ''}`}>{value}</p>
-          </div>
+  const body = (
+    <CardContent className="p-4">
+      <div className="flex items-center gap-3">
+        <div className={`p-2 rounded-lg ${tone} shrink-0`}>
+          <Icon className="w-5 h-5 text-white" />
         </div>
-      </CardContent>
-    </Card>
+        <div className="min-w-0">
+          <p className="text-xs text-gray-500 truncate">{label}</p>
+          <p className={`text-lg font-bold text-gray-900 ${valueClass ?? ''}`}>{value}</p>
+        </div>
+      </div>
+    </CardContent>
   )
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className="text-start">
+        <Card className="h-full transition-shadow hover:shadow-md hover:border-blue-200 cursor-pointer">{body}</Card>
+      </button>
+    )
+  }
+  return <Card>{body}</Card>
 }
 
 const Th = ({ children, dir }: { children: React.ReactNode; dir: string }) => (
@@ -323,6 +351,11 @@ function Rank({ i }: { i: number }) {
 
 function EmptyRow({ span, text }: { span: number; text: string }) {
   return <tr><td colSpan={span} className="px-4 py-10 text-center text-gray-400">{text}</td></tr>
+}
+
+function StockCell({ stock }: { stock: number }) {
+  const tone = stock <= 0 ? 'text-red-600' : stock <= LOW_STOCK_THRESHOLD ? 'text-orange-600' : 'text-gray-700'
+  return <span className={`font-semibold ${tone}`}>{nf(stock)}</span>
 }
 
 function ProfitTable({ rows, maxProfit, dir }: { rows: ProductInsightRow[]; maxProfit: number; dir: string }) {
@@ -415,7 +448,7 @@ function OffersTable({ rows, dir }: { rows: ProductInsightRow[]; dir: string }) 
                   حتى {nf(r.maxDiscountPercent ?? 0)}%
                 </span>
               </td>
-              <td className="px-4 py-3 text-gray-700">{nf(r.stock)}</td>
+              <td className="px-4 py-3"><StockCell stock={r.stock} /></td>
               <td className="px-4 py-3">
                 {r.quantitySold === 0
                   ? <span className="text-xs text-amber-600">بطيء الحركة — يحتاج ترويج</span>
@@ -429,42 +462,107 @@ function OffersTable({ rows, dir }: { rows: ProductInsightRow[]; dir: string }) 
   )
 }
 
-function ReviewTable({ rows, dir }: { rows: ProductInsightRow[]; dir: string }) {
+function LowStockTable({ rows, dir }: { rows: ProductInsightRow[]; dir: string }) {
   return (
     <div className="overflow-x-auto">
+      <div className="px-4 py-3 text-xs text-gray-500 bg-orange-50 border-b border-orange-100">
+        منتجات مخزونها {LOW_STOCK_THRESHOLD} قطعة أو أقل — مرتبة من الأقل. اضغط المنتج لتعديل المخزون.
+      </div>
+      <table className="w-full text-sm">
+        <thead><tr className="border-b border-gray-200 bg-gray-50/50">
+          <Th dir={dir}>المنتج</Th><Th dir={dir}>المخزون الحالي</Th><Th dir={dir}>الوحدة</Th>
+          <Th dir={dir}>سعر البيع</Th><Th dir={dir}>نسبة الربح</Th><Th dir={dir}>الكمية المباعة</Th>
+        </tr></thead>
+        <tbody>
+          {rows.length === 0 && <EmptyRow span={6} text="لا توجد منتجات بمخزون منخفض 🎉" />}
+          {rows.map((r) => (
+            <tr key={r.productId} className="border-b border-gray-100 hover:bg-gray-50">
+              <td className="px-4 py-3"><ProductCell row={r} /></td>
+              <td className="px-4 py-3">
+                <span className="inline-flex items-center gap-2">
+                  <StockCell stock={r.stock} />
+                  {r.stock <= 0
+                    ? <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">نفد</span>
+                    : <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">منخفض</span>}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-gray-500">{r.unitLabel ?? '—'}</td>
+              <td className="px-4 py-3 text-gray-900">{r.sellingPrice != null ? formatCurrency(r.sellingPrice) : '—'}</td>
+              <td className="px-4 py-3"><MarginPill margin={r.marginPercent} /></td>
+              <td className="px-4 py-3 text-gray-700">{nf(r.quantitySold)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function NoCostTable({ rows, dir }: { rows: ProductInsightRow[]; dir: string }) {
+  return (
+    <div className="overflow-x-auto">
+      <div className="px-4 py-3 text-xs text-gray-500 bg-red-50 border-b border-red-100">
+        منتجات بدون سعر جملة — لا يمكن حساب ربحها. اضغط «إضافة سعر الجملة» لفتح المنتج وإدخال سعر الجملة لكل وحدة.
+      </div>
+      <table className="w-full text-sm">
+        <thead><tr className="border-b border-gray-200 bg-gray-50/50">
+          <Th dir={dir}>المنتج</Th><Th dir={dir}>سعر البيع</Th><Th dir={dir}>المخزون</Th>
+          <Th dir={dir}>الكمية المباعة</Th><Th dir={dir}>الإجراء</Th>
+        </tr></thead>
+        <tbody>
+          {rows.length === 0 && <EmptyRow span={5} text="كل المنتجات لها سعر جملة 🎉" />}
+          {rows.map((r) => (
+            <tr key={r.productId} className="border-b border-gray-100 hover:bg-gray-50">
+              <td className="px-4 py-3"><ProductCell row={r} /></td>
+              <td className="px-4 py-3 text-gray-900">{r.sellingPrice != null ? formatCurrency(r.sellingPrice) : '—'}</td>
+              <td className="px-4 py-3"><StockCell stock={r.stock} /></td>
+              <td className="px-4 py-3 text-gray-700">{nf(r.quantitySold)}</td>
+              <td className="px-4 py-3">
+                <Link href={productHref(r.productId)}
+                  className={`inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-900 hover:bg-blue-800 px-3 py-1.5 rounded-lg transition-colors ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}>
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  إضافة سعر الجملة
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function WeakMarginTable({ rows, dir }: { rows: ProductInsightRow[]; dir: string }) {
+  return (
+    <div className="overflow-x-auto">
+      <div className="px-4 py-3 text-xs text-gray-500 bg-amber-50 border-b border-amber-100">
+        منتجات هامش ربحها أقل من ١٠٪ أو تُباع بخسارة — راجع سعر البيع أو سعر الجملة.
+      </div>
       <table className="w-full text-sm">
         <thead><tr className="border-b border-gray-200 bg-gray-50/50">
           <Th dir={dir}>المنتج</Th><Th dir={dir}>سعر البيع</Th><Th dir={dir}>سعر الجملة</Th>
-          <Th dir={dir}>نسبة الربح</Th><Th dir={dir}>المخزون</Th><Th dir={dir}>الملاحظة</Th>
+          <Th dir={dir}>ربح الوحدة</Th><Th dir={dir}>نسبة الربح</Th><Th dir={dir}>الملاحظة</Th>
         </tr></thead>
         <tbody>
-          {rows.length === 0 && <EmptyRow span={6} text="كل شيء على ما يُرام 🎉" />}
-          {rows.map((r) => {
-            const issues: string[] = []
-            if (!r.hasCostData) issues.push('لا يوجد سعر جملة')
-            if (r.marginPercent != null && r.marginPercent < 0) issues.push('بيع بخسارة')
-            else if (r.marginPercent != null && r.marginPercent < 10) issues.push('هامش ضعيف')
-            if (r.stock <= 0) issues.push('نفد المخزون')
-            else if (r.lowStock) issues.push('مخزون منخفض')
-            return (
-              <tr key={r.productId} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="px-4 py-3"><ProductCell row={r} /></td>
-                <td className="px-4 py-3 text-gray-900">{r.sellingPrice != null ? formatCurrency(r.sellingPrice) : '—'}</td>
-                <td className="px-4 py-3 text-gray-500">{r.wholesalePrice != null ? formatCurrency(r.wholesalePrice) : '—'}</td>
-                <td className="px-4 py-3"><MarginPill margin={r.marginPercent} /></td>
-                <td className="px-4 py-3 text-gray-700">{nf(r.stock)}</td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-1">
-                    {issues.map((issue) => (
-                      <span key={issue} className="px-2 py-0.5 rounded-full text-xs bg-red-50 text-red-600 border border-red-100">
-                        {issue}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            )
-          })}
+          {rows.length === 0 && <EmptyRow span={6} text="لا توجد هوامش ضعيفة 🎉" />}
+          {rows.map((r) => (
+            <tr key={r.productId} className="border-b border-gray-100 hover:bg-gray-50">
+              <td className="px-4 py-3"><ProductCell row={r} /></td>
+              <td className="px-4 py-3 text-gray-900">{r.sellingPrice != null ? formatCurrency(r.sellingPrice) : '—'}</td>
+              <td className="px-4 py-3 text-gray-500">{r.wholesalePrice != null ? formatCurrency(r.wholesalePrice) : '—'}</td>
+              <td className="px-4 py-3">
+                <span className={(r.profitPerUnit ?? 0) < 0 ? 'text-red-600' : 'text-gray-700'}>
+                  {r.profitPerUnit != null ? formatCurrency(r.profitPerUnit) : '—'}
+                </span>
+              </td>
+              <td className="px-4 py-3"><MarginPill margin={r.marginPercent} /></td>
+              <td className="px-4 py-3">
+                {(r.marginPercent ?? 0) < 0
+                  ? <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-100">بيع بخسارة</span>
+                  : <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-100">هامش ضعيف</span>}
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

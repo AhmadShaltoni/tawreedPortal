@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { ArrowRight, Calendar, Loader2 } from 'lucide-react'
+import { ArrowRight, Calendar, Loader2, BarChart3 } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { useLanguage } from '@/lib/LanguageContext'
@@ -89,9 +89,10 @@ export function RevenueReportClient() {
         <div className={`flex items-center gap-2 ${dir === 'rtl' ? 'mr-auto flex-row-reverse' : 'ml-auto'}`}>
           <Link
             href="/admin/revenue/insights"
-            className="text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors"
+            className={`inline-flex items-center gap-2 text-sm font-semibold text-white bg-blue-900 hover:bg-blue-800 px-4 py-2 rounded-lg shadow-sm transition-colors ${dir === 'rtl' ? 'flex-row-reverse' : ''}`}
           >
-            مركز المبيعات والتسويق →
+            <BarChart3 className="w-4 h-4" />
+            مركز المبيعات والتسويق
           </Link>
           <Link
             href="/admin/revenue/products"
