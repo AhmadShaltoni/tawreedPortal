@@ -300,7 +300,7 @@ export async function recordDiscountUsageInTx(
   params: {
     code: Pick<
       DiscountCodeWithScope,
-      'id' | 'isSingleUse' | 'maxUsagePerUser' | 'maxUsage'
+      'id' | 'isSingleUse' | 'maxUsagePerUser' | 'maxUsage' | 'firstOrderOnly'
     >
     userId: string
     orderId: string
@@ -313,6 +313,17 @@ export async function recordDiscountUsageInTx(
   // Row lock on the code: concurrent orders using the same code queue up here,
   // so the counts below are race-free.
   await tx.$queryRaw`SELECT id FROM "DiscountCode" WHERE id = ${code.id} FOR UPDATE`
+
+  // Re-verify first-order-only under the lock (excluding the order we just
+  // created) so two concurrent "first" orders can't both consume the code.
+  if (code.firstOrderOnly) {
+    const priorOrders = await tx.order.count({
+      where: { buyerId: userId, status: { not: 'CANCELLED' }, id: { not: orderId } },
+    })
+    if (priorOrders > 0) {
+      throw new Error('هذا الكود صالح للطلب الأول فقط')
+    }
+  }
 
   if (code.maxUsage !== null) {
     const totalUsages = await tx.discountCodeUsage.count({

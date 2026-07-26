@@ -276,14 +276,8 @@ export async function POST(request: NextRequest) {
     }
     deliveryFee = deliveryResult.fee
     deliveryPromotionId = deliveryResult.promotionId
-
-    // Increment promotion usage if applicable
-    if (deliveryPromotionId) {
-      await db.deliveryPromotion.update({
-        where: { id: deliveryPromotionId },
-        data: { usageCount: { increment: 1 } },
-      })
-    }
+    // NOTE: promotion usageCount is incremented inside the order transaction
+    // below, so it never inflates on a checkout that later fails/rolls back.
   }
 
   // Create order in transaction
@@ -442,6 +436,15 @@ export async function POST(request: NextRequest) {
         })
       }
 
+      // Increment delivery-promotion usage inside the transaction so it only
+      // counts successful orders (rolls back with everything else on failure).
+      if (deliveryPromotionId) {
+        await tx.deliveryPromotion.update({
+          where: { id: deliveryPromotionId },
+          data: { usageCount: { increment: 1 } },
+        })
+      }
+
       // Clear cart
       await tx.cartItem.deleteMany({ where: { buyerId: user.id } })
 
@@ -471,7 +474,7 @@ export async function POST(request: NextRequest) {
           data: admins.map((admin) => ({
             type: 'NEW_ORDER' as const,
             title: 'طلب جديد',
-            message: `طلب جديد #${newOrder.orderNumber.slice(-8)} بقيمة ${totalPrice} د.أ`,
+            message: `طلب جديد #${newOrder.orderNumber.slice(-8)} بقيمة ${finalPrice} د.أ`,
             linkUrl: `/admin/orders/${newOrder.id}`,
             userId: admin.id,
           })),
@@ -502,7 +505,7 @@ export async function POST(request: NextRequest) {
   // Send push notification to admins (outside transaction)
   sendPushToRole(['ADMIN', 'SUPER_ADMIN'], {
     title: 'طلب جديد',
-    body: `طلب جديد #${order.orderNumber.slice(-8)} بقيمة ${totalPrice} د.أ`,
+    body: `طلب جديد #${order.orderNumber.slice(-8)} بقيمة ${finalPrice} د.أ`,
     data: {
       type: 'NEW_ORDER',
       orderId: order.id,

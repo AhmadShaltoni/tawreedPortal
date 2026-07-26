@@ -186,10 +186,14 @@ export async function updateUserCampaignProgress(userId: string, orderId: string
     // Get order details
     const order = await db.order.findUnique({
       where: { id: orderId },
-      select: { totalPrice: true, deliveryFee: true },
+      select: { totalPrice: true, deliveryFee: true, buyerId: true },
     })
 
     if (!order) return
+
+    // The order must belong to the user whose progress we're crediting.
+    // Guards against progress being credited from someone else's order.
+    if (order.buyerId !== userId) return
 
     const orderAmount = order.totalPrice - (order.deliveryFee || 0)
 

@@ -8,6 +8,43 @@ import { rebuildProductSearchText } from '@/lib/search-index'
 import type { ActionResponse } from '@/types'
 import { revalidatePath } from 'next/cache'
 
+// The DB enforces `@@unique([variantId, unit])` on ProductUnit: a single variant
+// can't have two selling units of the same unit type. Catch that here (before the
+// insert) so the admin gets a clear, actionable message instead of a raw
+// Prisma P2002 error. Returns an Arabic error string, or null when units are fine.
+function findDuplicateUnitError(
+  variants: Array<{ size: string; units: Array<{ unit: string; label: string }> }>
+): string | null {
+  for (const variant of variants) {
+    const seen = new Map<string, string>() // unit code -> label first seen with
+    for (const u of variant.units) {
+      if (seen.has(u.unit)) {
+        const label = seen.get(u.unit) || u.label
+        return `الحجم «${variant.size}» يحتوي على أكثر من نوع بيع بنفس الوحدة «${label}». ` +
+          `لا يمكن تكرار نفس نوع الوحدة داخل الحجم الواحد — اختر وحدة مختلفة لكل نوع بيع ` +
+          `(مثال: «كرتونة» بعدد ١٢ و«حبة» بعدد ١)، أو احذف النوع المكرر.`
+      }
+      seen.set(u.unit, u.label)
+    }
+  }
+  return null
+}
+
+// Maps a Prisma known-request error to a friendly Arabic message. The
+// findDuplicateUnitError pre-check should already stop the common duplicate-unit
+// case, but this stays as a defensive net so a unique-constraint violation never
+// surfaces to the admin as a raw crash. Returns null for errors we don't handle
+// (caller should rethrow those).
+function friendlyDbError(err: unknown): string | null {
+  const e = err as { code?: string; meta?: { target?: unknown } }
+  if (e?.code !== 'P2002') return null
+  const target = Array.isArray(e.meta?.target) ? (e.meta?.target as string[]) : []
+  if (target.includes('unit')) {
+    return 'لا يمكن تكرار نفس نوع الوحدة داخل الحجم الواحد. راجع أنواع البيع واحذف الوحدة المكررة.'
+  }
+  return 'توجد قيمة مكررة تخالف قيداً فريداً في قاعدة البيانات. تحقق من الحقول المكررة وحاول مجدداً.'
+}
+
 export async function createProduct(formData: FormData): Promise<ActionResponse<{ id: string }>> {
   const { authorized, error } = await requireRole(['ADMIN'])
   if (!authorized) return { success: false, error: error ?? 'Not authorized' }
@@ -103,6 +140,11 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
     })
   }
 
+  const duplicateUnitError = findDuplicateUnitError(validatedVariants)
+  if (duplicateUnitError) {
+    return { success: false, error: duplicateUnitError }
+  }
+
   // Parse additional category IDs, tag IDs, collection IDs
   const categoryIdsJson = formData.get('categoryIds')
   const categoryIds: string[] = categoryIdsJson ? JSON.parse(categoryIdsJson as string) : []
@@ -141,7 +183,9 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
   }
 
   // Create product, variants, and units in a transaction
-  const product = await db.$transaction(async (tx) => {
+  let product: { id: string }
+  try {
+    product = await db.$transaction(async (tx) => {
     // Get max sortOrder to place new product at the end
     const maxSort = await tx.product.aggregate({ _max: { sortOrder: true } })
     const nextSortOrder = (maxSort._max.sortOrder ?? -1) + 1
@@ -220,7 +264,12 @@ export async function createProduct(formData: FormData): Promise<ActionResponse<
     await rebuildProductSearchText(tx, p.id)
 
     return p
-  })
+    })
+  } catch (err) {
+    const friendly = friendlyDbError(err)
+    if (friendly) return { success: false, error: friendly }
+    throw err
+  }
 
   revalidatePath('/admin/products')
   return { success: true, data: { id: product.id } }
@@ -341,6 +390,11 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
         })),
       })
     }
+
+    const duplicateUnitError = findDuplicateUnitError(validatedVariants)
+    if (duplicateUnitError) {
+      return { success: false, error: duplicateUnitError }
+    }
   }
 
   // Parse additional category IDs, tag IDs, collection IDs
@@ -349,7 +403,8 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
   const collectionIdsJson = formData.get('collectionIds')
 
   // Update product, variants, and units in a transaction
-  await db.$transaction(async (tx) => {
+  try {
+    await db.$transaction(async (tx) => {
     await tx.product.update({
       where: { id },
       data: {
@@ -497,7 +552,12 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
     }
 
     await rebuildProductSearchText(tx, id)
-  })
+    })
+  } catch (err) {
+    const friendly = friendlyDbError(err)
+    if (friendly) return { success: false, error: friendly }
+    throw err
+  }
 
   revalidatePath('/admin/products')
   revalidatePath(`/admin/products/${id}`)

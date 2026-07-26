@@ -6,6 +6,19 @@ import type { ActionResponse } from '@/types'
 
 export type OrderStatusValue = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED'
 
+// Legal forward transitions. CANCELLED is terminal (revive by placing a new
+// order); DELIVERED may still be cancelled to handle returns/refunds. This
+// blocks backward jumps like CANCELLED→DELIVERED that would otherwise
+// re-trigger loyalty awards after a reversal.
+const ALLOWED_TRANSITIONS: Record<OrderStatusValue, OrderStatusValue[]> = {
+  PENDING: ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'],
+  CONFIRMED: ['PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'],
+  PROCESSING: ['SHIPPED', 'DELIVERED', 'CANCELLED'],
+  SHIPPED: ['DELIVERED', 'CANCELLED'],
+  DELIVERED: ['CANCELLED'],
+  CANCELLED: [],
+}
+
 /**
  * Core admin order-status transition, shared by the dashboard server action
  * and the mobile admin API: updates the order + status history, notifies the
@@ -16,8 +29,28 @@ export async function applyOrderStatusUpdate(input: {
   status: OrderStatusValue
   note?: string | null
 }): Promise<ActionResponse> {
-  const order = await db.order.findUnique({ where: { id: input.orderId } })
+  const order = await db.order.findUnique({
+    where: { id: input.orderId },
+    include: { items: { select: { variantId: true, variantOptionId: true, quantity: true, isReward: true } } },
+  })
   if (!order) return { success: false, error: 'Order not found' }
+
+  const currentStatus = order.status as OrderStatusValue
+
+  // No-op if the status is unchanged.
+  if (currentStatus === input.status) {
+    return { success: false, error: 'الطلب موجود بالفعل في هذه الحالة' }
+  }
+
+  // Enforce the transition state machine (prevents re-award / backward jumps).
+  if (!ALLOWED_TRANSITIONS[currentStatus]?.includes(input.status)) {
+    return { success: false, error: `لا يمكن تغيير حالة الطلب من ${currentStatus} إلى ${input.status}` }
+  }
+
+  // Restock only when moving INTO a cancelled state (reverse the checkout
+  // decrement). Reward prize items and legacy/RFQ lines without a live variant
+  // reference never decremented stock, so they're skipped.
+  const isCancelling = input.status === 'CANCELLED'
 
   const statusHistory = ((order.statusHistory as Array<Record<string, unknown>>) || [])
   statusHistory.push({
@@ -26,13 +59,32 @@ export async function applyOrderStatusUpdate(input: {
     note: input.note ?? null,
   })
 
-  await db.order.update({
-    where: { id: input.orderId },
-    data: {
-      status: input.status,
-      statusHistory: statusHistory as any,
-      ...(input.status === 'DELIVERED' ? { actualDelivery: new Date() } : {}),
-    },
+  await db.$transaction(async (tx) => {
+    if (isCancelling) {
+      for (const item of order.items) {
+        if (item.isReward || !item.variantId || item.quantity <= 0) continue
+        if (item.variantOptionId) {
+          await tx.variantOption.updateMany({
+            where: { id: item.variantOptionId },
+            data: { stock: { increment: item.quantity } },
+          })
+        } else {
+          await tx.productVariant.updateMany({
+            where: { id: item.variantId },
+            data: { stock: { increment: item.quantity } },
+          })
+        }
+      }
+    }
+
+    await tx.order.update({
+      where: { id: input.orderId },
+      data: {
+        status: input.status,
+        statusHistory: statusHistory as any,
+        ...(input.status === 'DELIVERED' ? { actualDelivery: new Date() } : {}),
+      },
+    })
   })
 
   // Notify buyer with push notification — friendly copy, no raw IDs or

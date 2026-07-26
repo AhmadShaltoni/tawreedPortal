@@ -1,5 +1,8 @@
-'use server'
-
+// NOTE: intentionally NOT a `'use server'` module. `deleteAccount` trusts its
+// `userId` argument, so it must never be exposed as a directly-dispatchable
+// Server Action. It is a server-only helper invoked exclusively by the
+// Bearer-authenticated route `app/api/v1/user/account` (which supplies the
+// authenticated user's id) and the admin purge flow.
 import { db } from '@/lib/db'
 import { hashPhone } from '@/lib/account/phone-hash'
 import { purgeUserWithinTx } from '@/lib/account/purge-user'

@@ -190,34 +190,82 @@ export async function reverseOrderPoints(orderId: string): Promise<ActionRespons
     }
 
     const points = order.loyaltyPointsEarned
-    const balance = await db.loyaltyBalance.findUnique({ where: { userId: order.buyerId } })
+    const userId = order.buyerId
 
-    if (balance) {
-      await db.loyaltyBalance.update({
-        where: { userId: order.buyerId },
+    // Everything runs atomically so points and coupon state stay consistent.
+    await db.$transaction(async (tx) => {
+      const balance = await tx.loyaltyBalance.findUnique({ where: { userId } })
+
+      // How many of the reversed points were already spent (i.e. turned into
+      // reward coupons)? That portion can't come from the current balance.
+      let remaining = points
+      let newBalance = balance?.currentBalance ?? 0
+      let reclaimedRedeemed = 0
+      const voidedCoupons: string[] = []
+
+      const fromBalance = Math.min(newBalance, remaining)
+      newBalance -= fromBalance
+      remaining -= fromBalance
+
+      // If points from this cancelled order were already redeemed into coupons,
+      // reclaim that value by voiding the buyer's still-unused, unexpired
+      // loyalty coupons (newest first) so they can't keep a free reward funded
+      // by points that no longer exist. Any surplus is fairly returned.
+      if (remaining > 0) {
+        const coupons = await tx.redeemedReward.findMany({
+          where: { userId, isUsed: false, usedAt: null, expiresAt: { gt: new Date() } },
+          include: { reward: { select: { pointsCost: true } } },
+          orderBy: { createdAt: 'desc' },
+        })
+
+        for (const coupon of coupons) {
+          if (remaining <= 0) break
+          await tx.redeemedReward.update({
+            where: { id: coupon.id },
+            data: { isUsed: true, usedAt: new Date() },
+          })
+          voidedCoupons.push(coupon.couponCode)
+
+          const cost = coupon.reward?.pointsCost ?? 0
+          reclaimedRedeemed += cost
+          const applied = Math.min(cost, remaining)
+          remaining -= applied
+          newBalance += cost - applied // return any leftover value to the buyer
+        }
+      }
+
+      if (balance) {
+        await tx.loyaltyBalance.update({
+          where: { userId },
+          data: {
+            currentBalance: Math.max(0, newBalance),
+            totalEarned: Math.max(0, balance.totalEarned - points),
+            // Voided coupons are no longer redeemed, so undo their redeemed total.
+            totalRedeemed: Math.max(0, balance.totalRedeemed - reclaimedRedeemed),
+          },
+        })
+      }
+
+      await tx.loyaltyTransaction.create({
         data: {
-          currentBalance: Math.max(0, balance.currentBalance - points),
-          totalEarned: Math.max(0, balance.totalEarned - points),
+          userId,
+          type: 'MANUAL_REMOVE',
+          points: -points,
+          description: `استرجاع نقاط الطلب الملغي رقم ${order.orderNumber}`,
+          descriptionEn: `Points reversed for cancelled order ${order.orderNumber}`,
+          referenceId: orderId,
+          referenceType: 'ORDER',
+          metadata: {
+            reason: 'ORDER_CANCELLED',
+            ...(voidedCoupons.length > 0 ? { voidedCoupons } : {}),
+          },
         },
       })
-    }
 
-    await db.loyaltyTransaction.create({
-      data: {
-        userId: order.buyerId,
-        type: 'MANUAL_REMOVE',
-        points: -points,
-        description: `استرجاع نقاط الطلب الملغي رقم ${order.orderNumber}`,
-        descriptionEn: `Points reversed for cancelled order ${order.orderNumber}`,
-        referenceId: orderId,
-        referenceType: 'ORDER',
-        metadata: { reason: 'ORDER_CANCELLED' },
-      },
-    })
-
-    await db.order.update({
-      where: { id: orderId },
-      data: { loyaltyPointsEarned: null },
+      await tx.order.update({
+        where: { id: orderId },
+        data: { loyaltyPointsEarned: null },
+      })
     })
 
     return { success: true, data: { points } }

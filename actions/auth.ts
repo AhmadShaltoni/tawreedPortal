@@ -10,8 +10,22 @@ import { createUserReferral } from './loyalty-referrals'
 import { awardWelcomeBonus, processReferralRewards } from './loyalty-points'
 import type { ActionResponse } from '@/types'
 import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 
 export async function registerUser(formData: FormData): Promise<ActionResponse> {
+  // Anti-abuse: throttle account creation per client IP so a single source
+  // can't script mass sign-ups (registration was previously unthrottled).
+  const hdrs = await headers()
+  const ip = hdrs.get('x-forwarded-for')?.split(',')[0]?.trim() || hdrs.get('x-real-ip') || 'unknown'
+  const rateKey = `register-ip:${ip}`
+  const rate = await checkLoginRateLimit(rateKey)
+  if (!rate.allowed) {
+    const minutes = Math.max(1, Math.ceil(rate.retryAfterSeconds / 60))
+    return { success: false, error: `عدد كبير من محاولات التسجيل. حاول مرة أخرى بعد ${minutes} دقيقة` }
+  }
+  // Count this attempt toward the per-IP window.
+  await recordFailedLogin(rateKey)
+
   const rawData = {
     username: formData.get('username'),
     phone: formData.get('phone'),

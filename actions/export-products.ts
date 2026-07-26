@@ -1,6 +1,7 @@
 'use server'
 
 import { db } from '@/lib/db'
+import { requirePermission } from '@/lib/auth'
 
 export async function getAllProductsForExport(options?: {
   categoryId?: string
@@ -8,6 +9,11 @@ export async function getAllProductsForExport(options?: {
   search?: string
   includeDescendants?: boolean
 }) {
+  // Exposes internal wholesale/cost prices — restrict to staff with product
+  // access. Server Actions bypass page/layout gating, so authorize here.
+  const { authorized } = await requirePermission('products')
+  if (!authorized) return []
+
   const { categoryId, supplierId, search } = options ?? {}
 
   const where: Record<string, unknown> = { isActive: true }

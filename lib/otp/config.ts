@@ -19,8 +19,10 @@ export const OTP_CONFIG = {
   // Phone number validation for Jordan
   JORDAN_PHONE_REGEX: /^(\+962|00962|0)7[789]\d{7}$/,
 
-  // Development mode - bypass WhatsApp and use fixed code
-  DEV_MODE: process.env.OTP_DEV_MODE === 'true',
+  // Development mode - bypass WhatsApp and use fixed code.
+  // Hard-guarded so it can NEVER activate in production even if the env var
+  // is accidentally set there (would otherwise make every OTP = DEV_OTP_CODE).
+  DEV_MODE: process.env.OTP_DEV_MODE === 'true' && process.env.NODE_ENV !== 'production',
 
   // Development OTP code (only works in dev mode)
   DEV_OTP_CODE: '123456',
