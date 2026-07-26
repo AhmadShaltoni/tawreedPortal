@@ -127,3 +127,13 @@ export function defaultRouteFor(user: PermissionSubject): string {
   if (user.role === 'DELIVERY') return '/admin/orders'
   return '/admin'
 }
+
+// Canonical dashboard home for ANY role. Use this instead of hard-coded binary
+// redirects: a layout that guards for a single role must send every other role
+// to its own home, otherwise non-matching roles (e.g. staff on /buyer) bounce
+// between dashboards forever — an infinite redirect loop.
+export function homeRouteFor(user: PermissionSubject): string {
+  if (user.role === 'BUYER') return '/buyer'
+  if (user.role === 'SUPPLIER') return '/supplier'
+  return defaultRouteFor(user) // staff → /admin (or /admin/orders for DELIVERY)
+}

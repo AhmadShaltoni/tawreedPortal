@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
+import { homeRouteFor } from '@/lib/permissions'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { UserMenu } from '@/components/layout/UserMenu'
 import { CartRestorer } from '@/components/CartRestorer'
@@ -18,7 +19,7 @@ export default async function BuyerLayout({
   }
 
   if (session.user.role !== 'BUYER') {
-    redirect('/supplier')
+    redirect(homeRouteFor(session.user))
   }
 
   return (

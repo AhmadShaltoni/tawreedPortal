@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
+import { homeRouteFor } from '@/lib/permissions'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { UserMenu } from '@/components/layout/UserMenu'
 import { Bell } from 'lucide-react'
@@ -17,7 +18,7 @@ export default async function SupplierLayout({
   }
 
   if (session.user.role !== 'SUPPLIER') {
-    redirect('/buyer')
+    redirect(homeRouteFor(session.user))
   }
 
   return (
