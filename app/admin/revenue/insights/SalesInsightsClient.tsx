@@ -135,11 +135,13 @@ export function SalesInsightsClient() {
     () => [...rows].filter((r) => r.quantitySold > 0).sort((a, b) => b.quantitySold - a.quantitySold),
     [rows],
   )
+  // Offer candidates ranked by Offer Score (combines margin % AND dinar profit),
+  // not by percentage alone. Eligible = has cost, positive spread, in stock, not on offer.
   const offerRows = useMemo(
     () =>
       [...rows]
-        .filter((r) => r.hasCostData && !r.onOffer && (r.marginPercent ?? 0) >= 25 && r.stock > 0)
-        .sort((a, b) => (b.marginPercent ?? 0) - (a.marginPercent ?? 0)),
+        .filter((r) => r.hasCostData && !r.onOffer && r.stock > 0 && (r.profitPerUnit ?? 0) > 0)
+        .sort((a, b) => (b.offerScore ?? 0) - (a.offerScore ?? 0) || (b.profitPerUnit ?? 0) - (a.profitPerUnit ?? 0)),
     [rows],
   )
   const lowStockRows = useMemo(
@@ -176,12 +178,13 @@ export function SalesInsightsClient() {
     : weakRows
 
   function exportCsv() {
-    const header = ['المنتج', 'التصنيف', 'سعر البيع', 'سعر الجملة', 'ربح الوحدة', 'نسبة الربح %', 'المخزون', 'الكمية المباعة', 'الإيراد', 'الربح المحقق', 'أقصى خصم %']
+    const header = ['المنتج', 'التصنيف', 'سعر البيع', 'سعر الجملة', 'ربح الوحدة', 'نسبة الربح %', 'درجة العرض', 'المخزون', 'الكمية المباعة', 'الإيراد', 'الربح المحقق', 'أقصى خصم %']
     const lines = activeRows.map((r) =>
       [
         r.productName, r.categoryName,
         r.sellingPrice ?? '', r.wholesalePrice ?? '', r.profitPerUnit ?? '',
         r.marginPercent != null ? r.marginPercent.toFixed(1) : '',
+        r.offerScore ?? '',
         r.stock, r.quantitySold, r.revenue.toFixed(2), r.soldProfit.toFixed(2),
         r.maxDiscountPercent ?? '',
       ].map(csvEscape).join(','),
@@ -424,36 +427,46 @@ function BestSellersTable({ rows, maxQty, dir }: { rows: ProductInsightRow[]; ma
   )
 }
 
+function OfferScorePill({ score }: { score: number | null }) {
+  if (score == null) return <span className="text-gray-300">—</span>
+  const tone = score >= 70 ? 'bg-green-100 text-green-700' : score >= 40 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+  return <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${tone}`}>{score}/١٠٠</span>
+}
+
 function OffersTable({ rows, dir }: { rows: ProductInsightRow[]; dir: string }) {
   return (
     <div className="overflow-x-auto">
-      <div className="px-4 py-3 text-xs text-gray-500 bg-emerald-50 border-b border-emerald-100">
-        منتجات ذات هامش ربح جيد (٢٥٪ فأكثر) وغير مشمولة بعرض حالياً — يمكنك تقديم خصم مع بقاء الربح. «أقصى خصم» يبقي هامشاً لا يقل عن ١٠٪.
+      <div className="px-4 py-3 text-xs text-gray-500 bg-emerald-50 border-b border-emerald-100 leading-relaxed">
+        مرتّبة حسب <strong>درجة العرض</strong> التي تجمع بين <strong>نسبة الربح</strong> و<strong>مقدار الربح بالدينار للوحدة</strong> معاً — فلا نعتمد على النسبة وحدها.
+        درجة عالية تعني ربحاً جيداً في الجانبين. «أقصى خصم» يبقي هامشاً لا يقل عن ١٠٪.
       </div>
       <table className="w-full text-sm">
         <thead><tr className="border-b border-gray-200 bg-gray-50/50">
           <Th dir={dir}>المنتج</Th><Th dir={dir}>سعر البيع</Th><Th dir={dir}>سعر الجملة</Th>
-          <Th dir={dir}>نسبة الربح</Th><Th dir={dir}>أقصى خصم ممكن</Th><Th dir={dir}>المخزون</Th><Th dir={dir}>الحالة</Th>
+          <Th dir={dir}>ربح الوحدة (د.أ)</Th><Th dir={dir}>نسبة الربح</Th><Th dir={dir}>درجة العرض</Th>
+          <Th dir={dir}>أقصى خصم</Th><Th dir={dir}>المخزون</Th>
         </tr></thead>
         <tbody>
-          {rows.length === 0 && <EmptyRow span={7} text="لا توجد فرص عروض حالياً" />}
+          {rows.length === 0 && <EmptyRow span={8} text="لا توجد فرص عروض حالياً" />}
           {rows.map((r) => (
             <tr key={r.productId} className="border-b border-gray-100 hover:bg-gray-50">
-              <td className="px-4 py-3"><ProductCell row={r} /></td>
+              <td className="px-4 py-3">
+                <ProductCell row={r} />
+                {r.quantitySold === 0 && (
+                  <span className="mt-1 inline-block text-[11px] text-amber-600">بطيء الحركة — يحتاج ترويج</span>
+                )}
+              </td>
               <td className="px-4 py-3 text-gray-900 font-medium">{r.sellingPrice != null ? formatCurrency(r.sellingPrice) : '—'}</td>
               <td className="px-4 py-3 text-gray-500">{r.wholesalePrice != null ? formatCurrency(r.wholesalePrice) : '—'}</td>
+              <td className="px-4 py-3 font-semibold text-emerald-700">{r.profitPerUnit != null ? formatCurrency(r.profitPerUnit) : '—'}</td>
               <td className="px-4 py-3"><MarginPill margin={r.marginPercent} /></td>
+              <td className="px-4 py-3"><OfferScorePill score={r.offerScore} /></td>
               <td className="px-4 py-3">
-                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
                   حتى {nf(r.maxDiscountPercent ?? 0)}%
                 </span>
               </td>
               <td className="px-4 py-3"><StockCell stock={r.stock} /></td>
-              <td className="px-4 py-3">
-                {r.quantitySold === 0
-                  ? <span className="text-xs text-amber-600">بطيء الحركة — يحتاج ترويج</span>
-                  : <span className="text-xs text-gray-400">يُباع بالفعل</span>}
-              </td>
             </tr>
           ))}
         </tbody>

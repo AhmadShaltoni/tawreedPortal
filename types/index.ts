@@ -560,6 +560,10 @@ export interface ProductInsightRow {
   hasCostData: boolean
   marginPercent: number | null  // (price − cost) / price × 100
   profitPerUnit: number | null  // price − cost (JOD)
+  // Offer attractiveness 0–100: geometric mean of relative margin% and relative
+  // per-unit profit (JOD), so it rewards BOTH a healthy % and a healthy dinar
+  // spread — never the percentage alone. Null when cost data is missing.
+  offerScore: number | null
   maxDiscountPercent: number | null // Largest discount that still keeps ≥ floor margin
   // Inventory
   stock: number

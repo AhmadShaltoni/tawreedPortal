@@ -6,8 +6,12 @@ import type { ProductInsightRow, SalesMarketingInsights } from '@/types'
 
 // Tuning knobs for the insights heuristics (JOD / percentages).
 const LOW_STOCK_THRESHOLD = 10        // stock at or below this is flagged "low"
-const OFFER_MIN_MARGIN = 25           // margin % at/above which a product is an "offer opportunity"
 const MARGIN_FLOOR_AFTER_OFFER = 10   // discount headroom keeps at least this margin %
+// Offer Score weights (must sum to 1). The absolute dinar profit is weighted
+// higher than the margin %: a big spread on a modest % beats a tiny spread on a
+// high % — but both still count (geometric mean, so either at 0 ⇒ score 0).
+const OFFER_SCORE_PROFIT_WEIGHT = 0.6
+const OFFER_SCORE_MARGIN_WEIGHT = 0.4
 
 // Largest discount % we can apply to `price` while keeping the resulting margin
 // at/above `floor` %, given `cost`. Returns 0 when there is no room.
@@ -216,6 +220,7 @@ export async function getSalesMarketingInsights(options?: {
       hasCostData,
       marginPercent,
       profitPerUnit,
+      offerScore: null, // filled in a second pass below (needs catalog-wide normalization)
       maxDiscountPercent,
       stock,
       lowStock: stock <= LOW_STOCK_THRESHOLD,
@@ -227,8 +232,28 @@ export async function getSalesMarketingInsights(options?: {
     })
   }
 
+  // Offer Score (0–100): combine BOTH the margin percentage and the absolute
+  // per-unit profit (JOD) so we never rank on percentage alone. Each axis is
+  // normalized against the catalog's best value, then combined with a WEIGHTED
+  // geometric mean (dinar profit weighted higher). The score is high only when a
+  // product is strong on BOTH axes; if either is 0, the score is 0.
+  const scored = rows.filter((r) => r.hasCostData && (r.profitPerUnit ?? 0) > 0)
+  const maxMargin = Math.max(1, ...scored.map((r) => r.marginPercent ?? 0))
+  const maxUnitProfit = Math.max(0.0001, ...scored.map((r) => r.profitPerUnit ?? 0))
+  for (const r of rows) {
+    if (r.hasCostData && (r.profitPerUnit ?? 0) > 0) {
+      const mNorm = Math.min((r.marginPercent ?? 0) / maxMargin, 1)
+      const pNorm = Math.min((r.profitPerUnit ?? 0) / maxUnitProfit, 1)
+      r.offerScore = Math.round(
+        100 * Math.pow(pNorm, OFFER_SCORE_PROFIT_WEIGHT) * Math.pow(mNorm, OFFER_SCORE_MARGIN_WEIGHT),
+      )
+    }
+  }
+
+  // Eligible offer pool: has cost data, positive spread, in stock, not already
+  // discounted. Ranking by offerScore (not a % gate) surfaces the best ones.
   const offerOpportunityCount = rows.filter(
-    (r) => r.hasCostData && !r.onOffer && (r.marginPercent ?? 0) >= OFFER_MIN_MARGIN && r.stock > 0,
+    (r) => r.hasCostData && !r.onOffer && r.stock > 0 && (r.profitPerUnit ?? 0) > 0,
   ).length
 
   const summary = {
